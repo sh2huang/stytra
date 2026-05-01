@@ -10,8 +10,6 @@ import numpy as np
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 
-from pyqtgraph.Qt import QtCore, QtGui
-
 import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
@@ -308,7 +306,7 @@ class FolderViewer(QWidget):
         self.draglbl.setText(
             "... or drop folder here".format(DragDropLabel.acceptedFormat.upper())
         )
-        self.draglbl.setAlignment(QtCore.Qt.AlignCenter)
+        self.draglbl.setAlignment(Qt.AlignCenter)
         self.draglbl.droppedFile.connect(self.list_folders)
 
         self.jsontree = JsonReader()
@@ -323,8 +321,7 @@ class FolderViewer(QWidget):
         self.show()
 
     def select_folder(self):
-        dialog = QtGui.QFileDialog()
-        self.folder_path = dialog.getExistingDirectory(None, "Select Folder")
+        self.folder_path = QFileDialog.getExistingDirectory(None, "Select Folder")
         print(self.folder_path)
 
         # if not self.folder_path:

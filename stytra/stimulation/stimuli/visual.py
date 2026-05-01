@@ -1,12 +1,22 @@
 from itertools import product
+from numbers import Real
 
 import numpy as np
 import pims
 import qimage2ndarray
 from pathlib import Path
 
-from PyQt5.QtCore import QPoint, QRect, QPointF, Qt
-from PyQt5.QtGui import QPainter, QBrush, QColor, QPen, QTransform, QPolygon, QRegion
+from PyQt5.QtCore import QPoint, QRectF, QPointF, QLineF, Qt
+from PyQt5.QtGui import (
+    QPainter,
+    QBrush,
+    QColor,
+    QPen,
+    QTransform,
+    QPolygon,
+    QPolygonF,
+    QRegion,
+)
 
 from stytra.stimulation.stimuli import (
     Stimulus,
@@ -75,6 +85,10 @@ class VisualStimulus(Stimulus):
         """
         pass
 
+    @staticmethod
+    def _full_field_rect(w, h):
+        return QRectF(-1.0, -1.0, float(w) + 2.0, float(h) + 2.0)
+
     def clip(self, p, w, h):
         """Clip image before painting
 
@@ -92,12 +106,28 @@ class VisualStimulus(Stimulus):
 
         """
         if self.clip_mask is not None:
-            if isinstance(self.clip_mask, float):  # centered circle
+            if isinstance(self.clip_mask, Real):  # centered circle
+                diameter_x = float(self.clip_mask) * w * 2
+                diameter_y = float(self.clip_mask) * h * 2
                 a = QRegion(
-                    w / 2 - self.clip_mask * w,
-                    h / 2 - self.clip_mask * h,
-                    self.clip_mask * w * 2,
-                    self.clip_mask * h * 2,
+                    int(round(w / 2 - diameter_x / 2)),
+                    int(round(h / 2 - diameter_y / 2)),
+                    int(round(diameter_x)),
+                    int(round(diameter_y)),
+                    type=QRegion.Ellipse,
+                )
+                p.setClipRegion(a)
+            elif len(self.clip_mask) == 3 and all(
+                isinstance(v, Real) for v in self.clip_mask
+            ):
+                centre_x, centre_y, diameter = self.clip_mask
+                diameter_x = float(diameter) * w
+                diameter_y = float(diameter) * h
+                a = QRegion(
+                    int(round(float(centre_x) * w - diameter_x / 2)),
+                    int(round(float(centre_y) * h - diameter_y / 2)),
+                    int(round(diameter_x)),
+                    int(round(diameter_y)),
                     type=QRegion.Ellipse,
                 )
                 p.setClipRegion(a)
@@ -106,10 +136,12 @@ class VisualStimulus(Stimulus):
                 p.setClipRegion(QRegion(QPolygon(points)))
             else:
                 p.setClipRect(
-                    self.clip_mask[0] * w,
-                    self.clip_mask[1] * h,
-                    self.clip_mask[2] * w,
-                    self.clip_mask[3] * h,
+                    QRectF(
+                        float(self.clip_mask[0]) * w,
+                        float(self.clip_mask[1]) * h,
+                        float(self.clip_mask[2]) * w,
+                        float(self.clip_mask[3]) * h,
+                    )
                 )
 
 
@@ -144,7 +176,7 @@ class FullFieldVisualStimulus(VisualStimulus):
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor(*self.color)))  # Use chosen color
         self.clip(p, w, h)
-        p.drawRect(QRect(-1, -1, w + 2, h + 2))  # draw full field rectangle
+        p.drawRect(self._full_field_rect(w, h))  # draw full field rectangle
 
 
 class DynamicLuminanceStimulus(FullFieldVisualStimulus, InterpolatedStimulus):
@@ -237,9 +269,9 @@ class VideoStimulus(VisualStimulus, DynamicStimulus):
         display_centre = (w / 2, h / 2)
         img = qimage2ndarray.array2qimage(self._current_frame)
         p.drawImage(
-            QPoint(
-                display_centre[0] - self._current_frame.shape[1] // 2,
-                display_centre[1] - self._current_frame.shape[0] // 2,
+            QPointF(
+                float(display_centre[0] - self._current_frame.shape[1] / 2),
+                float(display_centre[1] - self._current_frame.shape[0] / 2),
             ),
             img,
         )
@@ -316,7 +348,7 @@ class BackgroundStimulus(PositionStimulus):
 
         # draw the black background
         p.setBrush(QBrush(QColor(*self.background_color)))
-        p.drawRect(QRect(-1, -1, w + 2, h + 2))
+        p.drawRect(self._full_field_rect(w, h))
 
         imw, imh = self.get_unit_dims(w, h)
 
@@ -538,14 +570,18 @@ class PaintGratingStimulus(BackgroundStimulus):
         p.setPen(Qt.NoPen)
         p.setRenderHint(QPainter.Antialiasing)
         p.setBrush(QBrush(QColor(*self.color)))
+
+        bar_width = self.grating_period / (
+                2 * max(self._experiment.calibrator.mm_px, 0.0001)
+        )
+
         p.drawRect(
-            point.x(),
-            point.y(),
-            int(
-                self.grating_period
-                / (2 * max(self._experiment.calibrator.mm_px, 0.0001))
-            ),
-            self.barheight,
+            QRectF(
+                float(point.x()),
+                float(point.y()),
+                float(bar_width),
+                float(self.barheight),
+            )
         )
 
 
@@ -599,29 +635,29 @@ class HalfFieldStimulus(PositionStimulus):
             + h / 2 * np.sin(theta)
             + self.center_dist * np.sin(theta - np.pi / 2)
         )
-        points.append(QPoint(sx, sy))
+        points.append(QPointF(float(sx), float(sy)))
         theta += dtheta
 
         sx += w * np.cos(theta)
         sy += w * np.sin(theta)
-        points.append(QPoint(sx, sy))
+        points.append(QPointF(float(sx), float(sy)))
         theta += dtheta
 
         sx += h * np.cos(theta)
         sy += h * np.sin(theta)
-        points.append(QPoint(sx, sy))
+        points.append(QPointF(float(sx), float(sy)))
         theta += dtheta
 
         sx += w * np.cos(theta)
         sy += w * np.sin(theta)
-        points.append(QPoint(sx, sy))
+        points.append(QPointF(float(sx), float(sy)))
         theta += dtheta
 
         sx += h * np.cos(theta)
         sy += h * np.sin(theta)
-        points.append(QPoint(sx, sy))
+        points.append(QPointF(float(sx), float(sy)))
 
-        poly = QPolygon(points)
+        poly = QPolygonF(points)
         p.drawPolygon(poly)
 
 
@@ -660,7 +696,7 @@ class RadialSineStimulus(VisualStimulus):
             * 127
             + 127
         ).astype(np.uint8)
-        p.drawImage(QPoint(0, 0), qimage2ndarray.array2qimage(self.image))
+        p.drawImage(QPointF(0.0, 0.0), qimage2ndarray.array2qimage(self.image))
 
 
 class FishOverlayStimulus(PositionStimulus):
@@ -679,14 +715,16 @@ class FishOverlayStimulus(PositionStimulus):
         p.setBrush(QBrush(QColor(*self.color)))
         p.setRenderHint(QPainter.Antialiasing)
         p.setBrush(QBrush(QColor(255, 255, 255)))
-        p.drawEllipse(self.x, self.y, 3, 3)
+        p.drawEllipse(QPointF(self.x, self.y), 1.5, 1.5)
         p.setPen(QPen(QColor(*self.color)))
         l = 20
         p.drawLine(
-            self.x,
-            self.y,
-            self.x + np.cos(self.theta) * l,
-            self.y + np.sin(self.theta) * l,
+            QLineF(
+                self.x,
+                self.y,
+                self.x + np.cos(self.theta) * l,
+                self.y + np.sin(self.theta) * l,
+            )
         )
 
 
@@ -755,8 +793,10 @@ class WindmillStimulus(CenteredBackgroundStimulus):
         if self._qbackground.height() < h * 1.5 or self._qbackground.width() < w * 1.5:
             self.create_pattern(1.5 * np.max([h, w]))
 
-        point.setX((w - self._qbackground.width()) / 2)
-        point.setY((h - self._qbackground.height()) / 2)
+        point = QPointF(
+            float(w - self._qbackground.width()) / 2.0,
+            float(h - self._qbackground.height()) / 2.0,
+        )
         p.setRenderHint(QPainter.HighQualityAntialiasing)
         p.drawImage(point, self._qbackground)
 
@@ -819,14 +859,17 @@ class HighResWindmillStimulus(CenteredBackgroundStimulus):
         # loop over angles and draw consecutive triangles
         for deg in np.array(angles):
             polyg_points = [
-                QPoint(mid_x, mid_y),
-                QPoint(int(mid_x + rad * np.cos(deg)), int(mid_y + rad * np.sin(deg))),
-                QPoint(
-                    int(mid_x + rad * np.cos(deg + size)),
-                    int(mid_y + rad * np.sin(deg + size)),
+                QPointF(float(mid_x), float(mid_y)),
+                QPointF(
+                    float(mid_x + rad * np.cos(deg)),
+                    float(mid_y + rad * np.sin(deg)),
+                ),
+                QPointF(
+                    float(mid_x + rad * np.cos(deg + size)),
+                    float(mid_y + rad * np.sin(deg + size)),
                 ),
             ]
-            polygon = QPolygon(polyg_points)
+            polygon = QPolygonF(polyg_points)
             p.drawPolygon(polygon)
 
 
@@ -881,7 +924,7 @@ class CircleStimulus(VisualStimulus, DynamicStimulus):
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor(*self.background_color)))
         self.clip(p, w, h)
-        p.drawRect(QRect(-1, -1, w + 2, h + 2))
+        p.drawRect(self._full_field_rect(w, h))
 
         # draw the circle
         p.setBrush(QBrush(QColor(*self.circle_color)))
@@ -934,13 +977,13 @@ class CalibratedCircleStimulus(VisualStimulus, DynamicStimulus):
         else:
             mm_px = 1
 
-        print(mm_px)
+        #print(mm_px)
 
         # draw the background
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor(*self.background_color)))
         self.clip(p, w, h)
-        p.drawRect(QRect(-1, -1, w + 2, h + 2))
+        p.drawRect(self._full_field_rect(w, h))
 
         # draw the circle
         p.setBrush(QBrush(QColor(*self.circle_color)))
@@ -972,11 +1015,11 @@ class FixationCrossStimulus(FullFieldVisualStimulus):
     def paint(self, p, w, h):
         super().paint(p, w, h)
         pen = QPen(QColor(*self.cross_color))
-        pen.setWidth(self.arm_width)
+        pen.setWidthF(float(self.arm_width))
         p.setPen(pen)
         #    p.setBrush(QBrush(QColor(0, 0, 0, 255)))
         l = w * self.arm_len
         w_p = w * self.position[0]
         h_p = h * self.position[1]
-        p.drawLine(w_p - l, h_p, w_p + l, h_p)
-        p.drawLine(w_p, h_p - l, w_p, h_p + l)
+        p.drawLine(QLineF(w_p - l, h_p, w_p + l, h_p))
+        p.drawLine(QLineF(w_p, h_p - l, w_p, h_p + l))

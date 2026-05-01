@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QPoint
+from PyQt5.QtCore import QPointF, QRectF, QLineF
 from PyQt5.QtWidgets import QWidget, QLabel, QHBoxLayout, QSizePolicy, QSpacerItem
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush
 from PyQt5.QtCore import Qt
@@ -116,34 +116,46 @@ class FramerateWidget(QWidget):
 
             l_corner = w_shadow_min
             w_rect = w_shadow_max - w_shadow_min
-            p.drawRect(l_corner, h_min, w_rect, h_max - h_min)
+            p.drawRect(
+                QRectF(
+                    float(l_corner),
+                    float(h_min),
+                    float(w_rect),
+                    float(h_max - h_min),
+                )
+            )
 
             # Draw the indicator line
             p.setPen(QPen(QColor(*indicator_color)))
 
-            p.drawLine(w_l, h_min, w_l, h_max + 5)
+            p.drawLine(
+                QLineF(float(w_l), float(h_min), float(w_l), float(h_max + 5))
+            )
 
             val_str = "{:.1f}".format(self.fps)
-            textw = fm.width(val_str)
+            textw = fm.horizontalAdvance(val_str)
 
-            p.drawText(QPoint((w_max + w_min - textw) // 2, text_height), val_str)
+            p.drawText(
+                QPointF(float((w_max + w_min - textw) // 2), float(text_height)),
+                val_str,
+            )
 
         if self.g_fps is not None:
             # Draw the goal line
             loc_g = (self.g_fps - min_bound) / delta_bound
             p.setPen(QPen(QColor(*goal_color), 3))
             w_l = int(w_min + loc_g * delta_w)
-            p.drawLine(w_l, h_min, w_l, h_max)
+            p.drawLine(QLineF(float(w_l), float(h_min), float(w_l), float(h_max)))
 
         # Draw the limits
         p.setPen(QPen(QColor(*limit_color)))
-        p.drawLine(w_min, h_min, w_min, h_max)
-        p.drawLine(w_max, h_min, w_max, h_max)
+        p.drawLine(QLineF(float(w_min), float(h_min), float(w_min), float(h_max)))
+        p.drawLine(QLineF(float(w_max), float(h_min), float(w_max), float(h_max)))
 
-        p.drawText(QPoint(w_min, text_height), str(min_bound))
+        p.drawText(QPointF(float(w_min), float(text_height)), str(min_bound))
         maxst = str(max_bound)
-        textw = fm.width(maxst)
-        p.drawText(QPoint(w_max - textw, text_height), maxst)
+        textw = fm.horizontalAdvance(maxst)
+        p.drawText(QPointF(float(w_max - textw), float(text_height)), maxst)
 
         p.end()
 

@@ -2,7 +2,7 @@ from datetime import datetime
 
 import numpy as np
 import qimage2ndarray
-from PyQt5.QtCore import QPoint, QRect, Qt, QSize
+from PyQt5.QtCore import QPointF, QRectF, Qt, QSize
 from PyQt5.QtGui import QPainter, QBrush, QColor, QTransform
 from PyQt5.QtWidgets import (
     QOpenGLWidget,
@@ -214,10 +214,10 @@ class StimDisplayWidget:
                 except AttributeError:
                     pass
             else:
-                p.drawRect(QRect(-1, -1, w + 2, h + 2))
+                p.drawRect(QRectF(-1.0, -1.0, float(w) + 2.0, float(h) + 2.0))
                 p.setRenderHint(QPainter.SmoothPixmapTransform, 1)
                 if self.img is not None:
-                    p.drawImage(QPoint(0, 0), self.img)
+                    p.drawImage(QPointF(0.0, 0.0), self.img)
 
         if self.calibrator is not None:
             if self.calibrator.enabled:
@@ -343,10 +343,10 @@ class StimDisplayWidgetConditional(StimDisplayWidget):
                     except AttributeError:
                         pass
                 else:
-                    p.drawRect(QRect(-1, -1, w + 2, h + 2))
+                    p.drawRect(QRectF(-1.0, -1.0, float(w) + 2.0, float(h) + 2.0))
                     p.setRenderHint(QPainter.SmoothPixmapTransform, 1)
                     if self.img is not None:
-                        p.drawImage(QPoint(0, 0), self.img)
+                        p.drawImage(QPointF(0.0, 0.0), self.img)
 
             if self.calibrator is not None:
                 if self.calibrator.enabled:

@@ -1,5 +1,5 @@
 import numpy as np
-from PyQt5.QtCore import Qt, QRect, QPointF
+from PyQt5.QtCore import Qt, QRectF, QPointF
 from PyQt5.QtGui import QBrush, QColor, QTransform
 from stytra.stimulation.stimuli import VisualStimulus, InterpolatedStimulus
 
@@ -170,7 +170,7 @@ class RandomDotKinematogram(DotDisplay):
         p.setBrush(QBrush(QColor(*self.color_bg)))
 
         self.clip(p, w, h)
-        p.drawRect(QRect(-1, -1, w + 2, h + 2))
+        p.drawRect(QRectF(-1.0, -1.0, float(w) + 2.0, float(h) + 2.0))
         p.setTransform(self.get_rot_transform(w, h))
 
         self.paint_dots(p, w, h)
@@ -256,6 +256,6 @@ class ContinuousRandomDotKinematogram(DotDisplay):
         p.setBrush(QBrush(QColor(*self.color_bg)))
 
         self.clip(p, w, h)
-        p.drawRect(QRect(-1, -1, w + 2, h + 2))
+        p.drawRect(QRectF(-1.0, -1.0, float(w) + 2.0, float(h) + 2.0))
 
         self.paint_dots(p, w, h)

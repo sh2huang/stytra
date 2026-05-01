@@ -1,6 +1,6 @@
 from stytra import Stytra, Protocol
 from stytra.stimulation.stimuli import VisualStimulus
-from PyQt5.QtCore import QRect
+from PyQt5.QtCore import QRectF
 from PyQt5.QtGui import QBrush, QColor
 from pathlib import Path
 
@@ -14,7 +14,7 @@ class NewStimulus(VisualStimulus):
 
     def paint(self, p, w, h):
         p.setBrush(QBrush(QColor(*self.color)))  # Use chosen color
-        p.drawRect(QRect(0, 0, w, h))  # draw full field rectangle
+        p.drawRect(QRectF(0.0, 0.0, float(w), float(h)))  # draw full field rectangle
 
     def update(self):
         fish_vel = self._experiment.estimator.get_velocity()

@@ -21,6 +21,7 @@ lib/
 lib64/
 parts/
 sdist/
+stytra_protocols/
 var/
 *.egg-info/
 .installed.cfg

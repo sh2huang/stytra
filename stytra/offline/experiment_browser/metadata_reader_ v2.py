@@ -8,8 +8,6 @@ import numpy as np
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 
-from pyqtgraph.Qt import QtCore, QtGui
-
 import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
@@ -53,7 +51,7 @@ class JsonReader(QWidget):
         self.draglbl.setText(
             "... or drop .{} file here".format(DragDropLabel.acceptedFormat.upper())
         )
-        self.draglbl.setAlignment(QtCore.Qt.AlignCenter)
+        self.draglbl.setAlignment(Qt.AlignCenter)
         self.draglbl.droppedFile.connect(self.open_file)
 
         self.layout = QGridLayout(self)

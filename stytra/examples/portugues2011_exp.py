@@ -28,7 +28,9 @@ class Portugues2011Protocol(Protocol):
     stytra_config = dict(
         tracking=dict(method="tail", estimator="vigor"),
         camera=dict(
-            video_file=str(Path(__name__).parent / "assets" / "fish_compressed.h5")
+            video_file=str(
+                Path(__file__).parent / "assets" / "fish_free_compressed.h5"
+            ),
         ),
         # Replace this example file with the desired camera config, such as
         # camera_config = dict(type="ximea")

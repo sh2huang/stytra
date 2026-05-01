@@ -8,8 +8,7 @@ import os
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
-
-from pyqtgraph.Qt import QtCore, QtGui
+from PyQt5.QtGui import QPixmap
 
 import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
@@ -60,7 +59,7 @@ class JsonReader(QWidget):
         self.draglbl.setText(
             "... or drop .{} file here".format(DragDropLabel.acceptedFormat.upper())
         )
-        self.draglbl.setAlignment(QtCore.Qt.AlignCenter)
+        self.draglbl.setAlignment(Qt.AlignCenter)
         self.draglbl.droppedFile.connect(self.open_file)
 
         self.layout = QGridLayout(self)
@@ -213,7 +212,7 @@ class JsonReader(QWidget):
             self.viewbtn = QPushButton("Zoom image")
             self.viewbtn.clicked.connect(self.image_viewer)
 
-            self.image = QtGui.QPixmap()
+            self.image = QPixmap()
             self.image.loadFromData(self.figbytes)
             self.image = self.image.scaledToHeight(500)
 
@@ -224,7 +223,7 @@ class JsonReader(QWidget):
 
     def image_viewer(self):
         """Open metadata image in the Image Viewer from PyQtGraph."""
-        self.win = QtGui.QMainWindow()
+        self.win = QMainWindow()
         self.win.resize(800, 800)
 
         self.fignp = np.array(Image.open(io.BytesIO(self.figbytes)))

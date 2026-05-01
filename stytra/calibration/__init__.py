@@ -2,8 +2,8 @@ import math
 
 import cv2
 import numpy as np
-from PyQt5.QtCore import QRect, QPoint
-from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QPolygon
+from PyQt5.QtCore import QRectF, QPointF, QLineF
+from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QPolygonF
 
 from lightparam.param_qt import ParametrizedQt, Param
 
@@ -124,23 +124,27 @@ class CrossCalibrator(Calibrator):
             p.setBrush(QBrush(QColor(0, 0, 0, 0)))
         else:
             p.setBrush(QBrush(QColor(0, 0, 0, 255)))
-        p.drawRect(QRect(1, 1, w - 2, h - 2))
+        p.drawRect(QRectF(1.0, 1.0, float(w) - 2.0, float(h) - 2.0))
         l2 = self.length_px / 2
         cw = w // 2
         ch = h // 2
 
         # draw the cross and the axis labels
-        p.drawLine(cw - l2, ch, cw + l2, h // 2)
-        p.drawText(w * 3 // 4, ch - 5, "x")
-        p.drawLine(cw, h // 2 + l2, cw, ch - l2)
-        p.drawText(cw + 5, h * 3 // 4, "y")
+        p.drawLine(QLineF(float(cw - l2), float(ch), float(cw + l2), float(h // 2)))
+        p.drawText(QPointF(float(w * 3 // 4), float(ch - 5)), "x")
+        p.drawLine(QLineF(float(cw), float(h // 2 + l2), float(cw), float(ch - l2)))
+        p.drawText(QPointF(float(cw + 5), float(h * 3 // 4)), "y")
 
         # draw the "fish outline"
-        p.drawEllipse(cw - 5, ch - 8, 3, 5)
-        p.drawEllipse(cw + 2, ch - 8, 3, 5)
+        p.drawEllipse(QRectF(float(cw - 5), float(ch - 8), 3.0, 5.0))
+        p.drawEllipse(QRectF(float(cw + 2), float(ch - 8), 3.0, 5.0))
         p.drawPolygon(
-            QPolygon(
-                [QPoint(cw - 3, ch + 2), QPoint(cw + 3, ch + 2), QPoint(cw, ch + 20)]
+            QPolygonF(
+                [
+                    QPointF(float(cw - 3), float(ch + 2)),
+                    QPointF(float(cw + 3), float(ch + 2)),
+                    QPointF(float(cw), float(ch + 20)),
+                ]
             )
         )
 
@@ -202,7 +206,11 @@ class CircleCalibrator(Calibrator):
             p.setPen(QPen(QColor(255, 0, 0)))
             p.setBrush(QBrush(QColor(255, 0, 0)))
             for centre in centres:
-                p.drawEllipse(QPoint(*centre), self.r, self.r)
+                p.drawEllipse(
+                    QPointF(float(centre[0]), float(centre[1])),
+                    float(self.r),
+                    float(self.r),
+                )
 
     @staticmethod
     def _find_angles(kps):

@@ -6,7 +6,6 @@ import stytra
 from stytra.stimulation import Protocol, Pause
 from stytra.experiments import VisualExperiment
 from stytra.stimulation.stimuli import FullFieldVisualStimulus
-from stytra.triggering import Trigger
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 import stytra as st
@@ -49,23 +48,26 @@ for (_, module_name, _) in iter_modules([package_dir]):
 
 # only tests initialization
 @pytest.mark.parametrize("protocol", protocols)
-def test_base_exp(qtbot, protocol):
+def test_base_exp(qtbot, qapp, protocol):
 
     print("Testing gui Protocol: ", protocol)
     tic = time()
     print("Start: t = 0")
 
-    # Initialize app
-    app = QApplication([])
+    # Use pytest-qt's QApplication instead of creating a new one.
+    app = qapp
     stytra_obj = st.Stytra(protocol=protocol(), app=app, exec=False)
     exp = stytra_obj.exp
-    duration = exp.protocol_runner.duration
     exp_wnd = exp.window_main
 
-    # Close app
+    qtbot.addWidget(exp_wnd)
+
     qtbot.wait(5000)
     print("Finished: t = {:.1f}".format(time() - tic))
 
-    exp_wnd.closeEvent(None)
-    qtbot.wait(5000)
+    # Close via Qt, not by calling closeEvent(None).
+    exp_wnd.close()
+    qapp.processEvents()
+    qtbot.wait(1000)
+
     print("END: t = {:.1f}".format(time() - tic))

@@ -1,5 +1,5 @@
 import numpy as np
-from PyQt5.QtCore import QRect
+from PyQt5.QtCore import QRectF
 from PyQt5.QtGui import QBrush, QColor
 from stytra.stimulation.stimuli.generic_stimuli import DynamicStimulus
 from stytra.stimulation.stimuli.visual import RadialSineStimulus
@@ -82,7 +82,7 @@ class PauseOutsideStimulus(DynamicStimulus):
 
     def paint(self, p, w, h):
         p.setBrush(QBrush(QColor(0, 0, 0)))
-        p.drawRect(QRect(-1, -1, w + 2, h + 2))
+        p.drawRect(QRectF(-1.0, -1.0, float(w) + 2.0, float(h) + 2.0))
         self.active.paint(p, w, h)
 
 
@@ -226,7 +226,7 @@ class ConditionalWrapper(DynamicStimulus):
 
     def paint(self, p, w, h):
         p.setBrush(QBrush(QColor(0, 0, 0)))
-        p.drawRect(QRect(-1, -1, w + 2, h + 2))
+        p.drawRect(QRectF(-1.0, -1.0, float(w) + 2.0, float(h) + 2.0))
         self.active.paint(p, w, h)
 
 

@@ -6,7 +6,6 @@ import stytra
 from stytra.stimulation import Protocol, Pause
 from stytra.experiments import VisualExperiment
 from stytra.stimulation.stimuli import FullFieldVisualStimulus
-from stytra.triggering import Trigger
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 import stytra as st
@@ -48,19 +47,23 @@ for (_, module_name, _) in iter_modules([package_dir]):
 
 
 @pytest.mark.parametrize("protocol", protocols)
-def test_base_exp(qtbot, protocol):
+def test_base_exp(qtbot, qapp, protocol):
 
     print()
     print("Testing Protocol: ", protocol)
     tic = time()
     print("Start: t = 0")
 
-    # Initialize app
-    app = QApplication([])
+    # Use pytest-qt's singleton QApplication.
+    # Creating a new QApplication for every protocol can crash on Windows.
+    app = qapp
+
     stytra_obj = st.Stytra(protocol=protocol(), app=app, exec=False)
     exp = stytra_obj.exp
     duration = exp.protocol_runner.duration
     exp_wnd = exp.window_main
+
+    qtbot.addWidget(exp_wnd)
 
     # Start Protocol
     qtbot.wait(5000)
@@ -68,15 +71,17 @@ def test_base_exp(qtbot, protocol):
     qtbot.mouseClick(exp_wnd.toolbar_control.toggleStatus, Qt.LeftButton, delay=1)
 
     # Wait a safe amount for the end of the protocol
-    d = (duration + 1) * 5000
-    if d > 400000:
-        d = 40000
+    d = int((duration + 5) * 1000)
+    if d>60000:
+        d=10000
     print("Duration = {:.1f} min".format((d / 60000)))
     qtbot.wait(d)
 
     print("Finished: t = {:.1f}".format(time() - tic))
 
-    # Close app
-    exp_wnd.closeEvent(None)
+    # Close through Qt, not by manually calling closeEvent(None).
+    exp_wnd.close()
     qtbot.wait(5000)
+    app.processEvents()
+
     print("END: t = {:.1f}".format(time() - tic))
