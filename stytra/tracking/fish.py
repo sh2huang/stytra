@@ -94,12 +94,14 @@ class FishTrackingMethod(ImageToDataNode):
             desc="How many frames does the fish persist for if it is not detected",
         ),
         prediction_uncertainty: Param(0.1, (0.0, 10.0, 0.0001)),
-        fish_area: Param((200, 1200), (1, 4000)),
+        fish_area_min: Param(200, (1, 4000)),
+        fish_area_max: Param(1200, (1, 4000)),
         border_margin: Param(5, (0, 100)),
         tail_length: Param(60.0, (1.0, 200.0)),
         tail_track_window: Param(3, (3, 70)),
     ):
-
+        if fish_area_min > fish_area_max:
+            fish_area_min, fish_area_max = fish_area_max, fish_area_min
         # update the previously-detected fish using the Kalman filter
         if self.fishes is None:
             self.reset()
@@ -135,7 +137,7 @@ class FishTrackingMethod(ImageToDataNode):
         nofish = True
         for row, centroid in zip(stats, centroids):
             # check if the contour is fish-sized and central enough
-            if not fish_area[0] < row[cv2.CC_STAT_AREA] * area_scale < fish_area[1]:
+            if not fish_area_min  < row[cv2.CC_STAT_AREA] * area_scale < fish_area_max:
                 continue
 
             # find the bounding box of the fish in the original image coordinates
@@ -216,7 +218,7 @@ class FishTrackingMethod(ImageToDataNode):
         if nofish:
             messages.append(
                 "W:No object of right area, between {:.0f} and {:.0f}".format(
-                    *fish_area
+                    fish_area_min, fish_area_max
                 )
             )
 
