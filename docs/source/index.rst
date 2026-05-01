@@ -32,7 +32,7 @@ an open-source, integrated system for stimulation, tracking and closed-loop beha
 
 We present Stytra, a flexible, open-source software package, written in Python and
 designed to cover all the general requirements involved in larval zebrafish behavioral
-experiments. It provides :ref:`timed stimulus presentation<stim-desc>`, :ref:`interfacing with external devices<trig-desc>`
+experiments. It provides :ref:`timed stimulus presentation<stim-desc>`
 and simultaneous real-time :ref:`tracking <tracking-desc>` of behavioral parameters such as position,
 orientation, tail and eye motion in both freely-swimming and head-restrained
 preparations. Stytra logs all recorded quantities, metadata, and code version in
@@ -44,7 +44,7 @@ documentation with examples for extending the package to new stimuli and hardwar
 as well as a :ref:`schema and parts list <hardware-list>` for behavioral setups. We showcase Stytra by
 :ref:`reproducing <reproduction>` previously published behavioral protocols in both head-restrained and
 freely-swimming larvae. We also :ref:`demonstrate <imaging-example>` the use of the software in the context of a
-calcium imaging experiment, where it interfaces with other acquisition devices. Our
+calcium imaging experiment. Our
 aims are to enable more laboratories to easily implement behavioral experiments, as
 well as to provide a platform for sharing stimulus protocols that permits easy
 reproduction of experiments and straightforward validation. Finally, we demonstrate

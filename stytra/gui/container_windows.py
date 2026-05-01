@@ -8,7 +8,6 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QPlainTextEdit,
     QMainWindow,
-    QCheckBox,
     QVBoxLayout,
     QDockWidget,
     QFileDialog,
@@ -96,9 +95,6 @@ class ExperimentWindow(QMainWindow):
             self.chk_db.toggled.connect(self.toggle_db)
             self.toolbar_control.addWidget(self.chk_db)
 
-        if experiment.trigger is not None:
-            self.chk_scope = QCheckBox("Wait for trigger signal")
-
         self.logger = QPlainTextEditLogger()
         self.experiment.logger.addHandler(self.logger)
 
@@ -151,9 +147,6 @@ class ExperimentWindow(QMainWindow):
         dockFramerate.setObjectName("dock_framerates")
         self.addDockWidget(Qt.RightDockWidgetArea, dockFramerate)
         self.add_dock(dockFramerate)
-
-        if self.experiment.trigger is not None:
-            self.toolbar_control.addWidget(self.chk_scope)
 
         self.experiment.gui_timer.timeout.connect(self.plot_framerate.update)
 

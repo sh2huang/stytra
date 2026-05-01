@@ -163,12 +163,6 @@ class Stytra:
 
         recursive_update(config, kwargs)  # Use also keyword arguments
 
-        if config.get("scope_triggering", None) == "zmq":
-            # Automatically use zmqTrigger if zmq is specified
-            from stytra.triggering import ZmqTrigger
-
-            config["scope_triggering"] = ZmqTrigger(port="5555")
-
         if app is None:
             app = QApplication([])
             app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())

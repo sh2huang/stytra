@@ -19,9 +19,6 @@ Module description
     :py:mod:`stytra.hardware`
         Communication with external hardware, from cameras to NI boards
 
-    :py:mod:`stytra.triggering`
-        Communication with other equipment for starting or stopping experiments
-
     :py:mod:`stytra.metadata`
         Classes that manage the metadata
 

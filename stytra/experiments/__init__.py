@@ -1,7 +1,6 @@
 import datetime
 import os
 import traceback
-from queue import Empty
 import numpy as np
 import flammkuchen as fl
 import logging
@@ -13,7 +12,6 @@ import imageio
 from importlib.metadata import PackageNotFoundError, version as distribution_version
 
 from PyQt5.QtCore import QObject, QTimer, pyqtSignal, QByteArray
-from PyQt5.QtWidgets import QMessageBox
 
 from stytra.calibration import CrossCalibrator
 from stytra.collectors import DataCollector
@@ -76,8 +74,6 @@ class Experiment(QObject):
         specifies every how many frames one will be saved (set to 1 to
         record) all displayed frames. The final movie will be saved in the
         directory in an .h5 file.
-    trigger : :class:`Trigger <stytra.triggering.Trigger>` object
-        (optional) Trigger class to control the beginning of the stimulation.
     offline : bool
         if stytra is used in offline analysis, stimulus is not displayed
     log_format : str
@@ -99,8 +95,6 @@ class Experiment(QObject):
         loop_protocol=False,
         arduino_config=None,
         log_format="csv",
-        trigger_duration_queue=None,
-        scope_triggering=None,
         offline=False,
         **kwargs
     ):
@@ -111,11 +105,6 @@ class Experiment(QObject):
         self.protocol = protocol
 
         self.arduino_config = arduino_config
-
-        # If there's a trigger, reference its queue to pass the duration:
-        self.trigger = scope_triggering
-        if scope_triggering is not None:
-            self.trigger_duration_queue = scope_triggering.duration_queue
         self.offline = offline
 
         self.asset_dir = dir_assets
@@ -133,9 +122,7 @@ class Experiment(QObject):
         )
 
         self.window_main = None
-        self.scope_config = None
         self.arduino_board = None
-        self.abort = False
 
         self.logger = logging.getLogger()
         self.logger.setLevel("INFO")
@@ -244,9 +231,6 @@ class Experiment(QObject):
         self.make_window()
         self.protocol_runner.update_protocol()
 
-        if self.trigger is not None:
-            self.trigger.start()
-
     def restore_window_state(self):
         if self.gui_params.window_state:
             self.window_main.restoreState(
@@ -263,55 +247,8 @@ class Experiment(QObject):
         self.window_main.construct_ui()
         self.window_main.show()
 
-    def check_trigger(self):
-        self.abort = False
-        # If we have a trigger and trigger option is set:
-        if self.trigger is not None and self.window_main.chk_scope.isChecked():
-            # Put duration of the experiment in the queue for the trigger:
-            duration_exp = self.protocol_runner.duration
-            self.trigger_duration_queue.put(duration_exp)
-
-            self.logger.info("Waiting for trigger signal...")
-
-            # Open message box for aborting:
-            msg = QMessageBox()
-            msg.setText("Waiting for trigger event...")
-            msg.setStandardButtons(QMessageBox.Abort)
-            msg.buttonClicked.connect(self.abort_start)
-            msg.show()
-
-            # While loop to keep processing application events while we
-            # are listening to the trigger (otherwise app would be stuck):
-            while True and not self.abort:
-                if (
-                    self.trigger.start_event.is_set()
-                    and not self.protocol_runner.running
-                ):
-                    msg.close()
-                    return
-                else:
-                    self.app.processEvents()
-
-    def read_scope_data(self):
-        """Read data from an external acquisition device triggered with stytra.
-        Currently we assume this comes from a microscope, thus the logging in
-        "imaging/microscope_config". To be changed in a future version maybe.
-        """
-        if self.trigger is not None:
-            try:
-                self.scope_config = self.trigger.device_params_queue.get(timeout=0.001)
-                self.logger.info(self.scope_config)
-                if self.dc is not None:
-                    self.dc.add_static_data(
-                        self.scope_config, "imaging/microscope_config"
-                    )
-            except Empty:
-                self.logger.info("No trigger configuration received")
-
     def start_protocol(self):
-        """Start the protocol from the ProtocolRunner. Before that, send a
-        a notification and if required communicate with the microscope to
-        synchronize and read configuration.
+        """Start the protocol from the ProtocolRunner.
 
         Parameters
         ----------
@@ -320,14 +257,8 @@ class Experiment(QObject):
         -------
 
         """
-        self.check_trigger()
         self.reset()
         self.protocol_runner.start()
-        self.read_scope_data()
-
-    def abort_start(self):
-        self.logger.info("Aborted")
-        self.abort = True
 
     def save_data(self):
         """Called at the end of the experiment to save all logs."""
@@ -378,10 +309,8 @@ class Experiment(QObject):
                     git_hash = repo.head.object.hexsha
                     #########################################################################################
 
-                except git.InvalidGitRepositoryError:
-                    self.logger.info("Invalid git repository")
-                except git.exc.NoSuchPathError:
-                    self.logger.info("Path not a git repository")
+                except Exception:
+                    self.logger.info("Could not determine git hash")
                 finally:
                     if repo is not None:
                         repo.close()
@@ -466,10 +395,6 @@ class Experiment(QObject):
             ):
                 self.end_protocol(save=False)
 
-        if self.trigger is not None:
-            self.trigger.kill_event.set()
-            self.trigger.join()
-
         if self.arduino_board is not None:
             self.arduino_board.close()
 
@@ -498,8 +423,6 @@ class Experiment(QObject):
         """
         traceback.print_tb(tb)
         print("{0}: {1}".format(exctype, value))
-        self.trigger.kill_event.set()
-        self.trigger.join()
 
 
 class VisualExperiment(Experiment):
