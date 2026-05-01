@@ -292,7 +292,13 @@ class TailTrackingSelection(CameraSelection):
 
         # Prepare curve for plotting tracked tail position:
         self.curve_tail = pg.PlotCurveItem(pen=dict(color=(230, 40, 5), width=3))
+        self.points_tail = pg.ScatterPlotItem(
+            size=20, pxMode=True, brush=(230, 40, 5), pen=None
+        )
+        self.curve_tail.setZValue(1)
+        self.points_tail.setZValue(2)
         self.display_area.addItem(self.curve_tail)
+        self.display_area.addItem(self.points_tail)
 
         self.initialise_roi(self.roi_tail)
 
@@ -365,6 +371,7 @@ class TailTrackingSelection(CameraSelection):
                 )
             points = np.array(points)
             self.curve_tail.setData(x=points[:, 1], y=points[:, 0])
+            self.points_tail.setData(x=points[:, 1], y=points[:, 0])
 
     def tail_points(self):
         tsy, tsx = (t * self.scale for t in self.tail_params.tail_start)
@@ -561,42 +568,50 @@ class CameraViewCalib(CameraViewWidget):
 
 
 @jit(nopython=True)
-def _tail_points_from_coords(coords, seglen):
-    """Computes the tail points from a list obtained from a data accumulator
+def _tail_plot_items_from_coords(coords, seglen):
+    """Computes tail line segments and node positions from accumulator data.
 
     Parameters
     ----------
     coords
         per fish, will be x, y, theta, theta_00, theta_01, theta_02...
-    n_data_per_fish
-        number of coordinate entries per fish
     seglen
         length of a single segment
 
     Returns
     -------
-        xs, ys
-        list of coordinates
+        line_xs, line_ys, point_xs, point_ys
+        coordinates for line segments and segment nodes
     """
 
-    xs = []
-    ys = []
+    line_xs = []
+    line_ys = []
+    point_xs = []
+    point_ys = []
     angles = np.zeros(coords.shape[1] - 5)
     for i_fish in range(coords.shape[0]):
-        xs.append(coords[i_fish, 2])
-        ys.append(coords[i_fish, 0])
+        if np.isnan(coords[i_fish, 0]):
+            continue
+
+        point_xs.append(coords[i_fish, 0])
+        point_ys.append(coords[i_fish, 2])
         angles[0] = coords[i_fish, 4]
         angles[1:] = angles[0] + coords[i_fish, 6:]
-        for i, an in enumerate(angles):
-            if i > 0:
-                xs.append(xs[-1])
-                ys.append(ys[-1])
+        for an in angles:
+            start_x = point_xs[-1]
+            start_y = point_ys[-1]
+            next_x = start_x + seglen * cos(an)
+            next_y = start_y + seglen * sin(an)
 
-            # for drawing the lines, points need to be repeated
-            xs.append(xs[-1] + seglen * sin(an))
-            ys.append(ys[-1] + seglen * cos(an))
+            line_xs.append(start_x)
+            line_ys.append(start_y)
+            line_xs.append(next_x)
+            line_ys.append(next_y)
 
-    return xs, ys
+            point_xs.append(next_x)
+            point_ys.append(next_y)
+
+    return line_xs, line_ys, point_xs, point_ys
 
 
 class CameraViewFish(CameraViewCalib):
@@ -608,6 +623,8 @@ class CameraViewFish(CameraViewCalib):
         self.lines_fish = pg.PlotCurveItem(
             connect="pairs", pen=pg.mkPen((10, 100, 200), width=3)
         )
+        self.lines_fish.setZValue(1)
+        self.points_fish.setZValue(2)
         self.display_area.addItem(self.points_fish)
         self.display_area.addItem(self.lines_fish)
         self.tracking_params = self.experiment.pipeline.fishtrack._params
@@ -635,15 +652,19 @@ class CameraViewFish(CameraViewCalib):
             retrieved_data = np.array(
                 current_data[:-1]  # the -1 if for the diagnostic area
             ).reshape(n_fish, n_data_per_fish)
-            valid = np.logical_not(np.all(np.isnan(retrieved_data), 1))
-            self.points_fish.setData(
-                y=retrieved_data[valid, 2], x=retrieved_data[valid, 0]
-            )
             if n_points_tail:
                 tail_len = (
                     self.tracking_params.tail_length / self.tracking_params.n_segments
                 )
-                ys, xs = _tail_points_from_coords(retrieved_data, tail_len)
-                self.lines_fish.setData(x=xs, y=ys)
+                line_xs, line_ys, point_xs, point_ys = _tail_plot_items_from_coords(
+                    retrieved_data, tail_len
+                )
+                self.points_fish.setData(x=point_xs, y=point_ys)
+                self.lines_fish.setData(x=line_xs, y=line_ys)
+            else:
+                valid = np.logical_not(np.all(np.isnan(retrieved_data), 1))
+                self.points_fish.setData(
+                    y=retrieved_data[valid, 2], x=retrieved_data[valid, 0]
+                )
         except ValueError as e:
             pass
