@@ -1,6 +1,5 @@
 import unittest
 import tempfile
-import pkg_resources
 import numpy as np
 import pandas as pd
 from stytra.stimulation.stimuli import (
@@ -21,7 +20,6 @@ from stytra import Stytra
 import shutil
 import stytra
 
-from os import path
 from pathlib import Path
 
 
@@ -119,19 +117,16 @@ class GenerateStimuliMovie:
     #    shutil.rmtree(self.test_dir)
 
     def waitend(self):
-        output_folder = (
-            path.dirname(pkg_resources.resource_filename(stytra.__name__, ""))
-            + "/docs/source/_static/"
-        )
+        output_folder = Path(stytra.__file__).resolve().parents[1] / "docs" / "source" / "_static"
         shutil.copy(
             next(Path(self.exp.folder_name).glob("*stim_movie.mp4")),
-            output_folder + "stim_movie_" + self.protocol_name + ".mp4",
+            output_folder / f"stim_movie_{self.protocol_name}.mp4",
         )
         sleep(0.5)
         self.exp.wrap_up()
 
     def test_stimulus_rendering(self):
-        asset_dir = pkg_resources.resource_filename(__name__, "/test_assets")
+        asset_dir = str(Path(__file__).resolve().parent / "test_assets")
 
         self.protocols = [
             KinematogramProtocol,

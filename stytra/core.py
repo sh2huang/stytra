@@ -15,7 +15,6 @@ from PyQt5.QtCore import QSize, Qt
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon
 
-import pkg_resources
 import qdarkstyle
 import pyqtgraph as pg
 import json
@@ -189,11 +188,9 @@ class Stytra:
 
         # Stytra logo
         app_icon = QIcon()
+        icons_dir = Path(__file__).resolve().parent / "icons"
         for size in [32, 64, 128, 256]:
-            app_icon.addFile(
-                pkg_resources.resource_filename(__name__, "/icons/{}.png".format(size)),
-                QSize(size, size),
-            )
+            app_icon.addFile(str(icons_dir / f"{size}.png"), QSize(size, size))
         app.setWindowIcon(app_icon)
 
         pg.setConfigOptions(imageAxisOrder="row-major")

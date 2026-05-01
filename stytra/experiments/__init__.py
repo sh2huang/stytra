@@ -10,6 +10,7 @@ import git
 import sys
 import types
 import imageio
+from importlib.metadata import PackageNotFoundError, version as distribution_version
 
 from PyQt5.QtCore import QObject, QTimer, pyqtSignal, QByteArray
 from PyQt5.QtWidgets import QMessageBox
@@ -24,9 +25,6 @@ from stytra.gui.container_windows import (
     VisualExperimentWindow,
     DynamicStimExperimentWindow,
 )
-
-import pkg_resources
-
 try:
     import av
 except ImportError:
@@ -362,42 +360,43 @@ class Experiment(QObject):
 
                 # Get program name and version and save to the data_log:
                 git_hash = None
-                version = None
+                stytra_version = None
+                repo = None
 
                 try:
 
                     ####################### try get repo even during testing ###############################
-                    if (
-                        "pytest" in sys.argv[0]
-                    ):  # if first element points to pytest, check other addresses in args
-
-                        for el in sys.argv:
-                            if os.path.isdir(el):
-                                repo = git.Repo(el, search_parent_directories=True)
-                                break
-
+                    if "pytest" in os.path.basename(sys.argv[0]).lower():
+                        repo_path = next(
+                            (el for el in sys.argv[1:] if os.path.isdir(el)),
+                            os.getcwd(),
+                        )
                     else:
+                        repo_path = sys.argv[0]
 
-                        repo = git.Repo(sys.argv[0], search_parent_directories=True)
-                        git_hash = repo.head.object.hexsha
+                    repo = git.Repo(repo_path, search_parent_directories=True)
+                    git_hash = repo.head.object.hexsha
                     #########################################################################################
-
-                    try:
-                        version = pkg_resources.get_distribution("stytra").version
-                    except pkg_resources.DistributionNotFound:
-                        self.logger.info("Could not find stytra version")
 
                 except git.InvalidGitRepositoryError:
                     self.logger.info("Invalid git repository")
                 except git.exc.NoSuchPathError:
                     self.logger.info("Path not a git repository")
+                finally:
+                    if repo is not None:
+                        repo.close()
+
+                try:
+                    stytra_version = distribution_version("stytra")
+                except PackageNotFoundError:
+                    self.logger.info("Could not find stytra version")
 
                 self.dc.add_static_data(
                     dict(
                         git_hash=git_hash,
                         name=sys.argv[0],
                         arguments=self.arguments,
-                        version=version,
+                        version=stytra_version,
                         dependencies=list(imports()),
                     ),
                     name="general/program_version",
