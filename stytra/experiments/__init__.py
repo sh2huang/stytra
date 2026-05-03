@@ -5,7 +5,6 @@ import numpy as np
 import flammkuchen as fl
 import logging
 import tempfile
-import git
 import sys
 import types
 import imageio
@@ -290,30 +289,7 @@ class Experiment(QObject):
                     pass
 
                 # Get program name and version and save to the data_log:
-                git_hash = None
                 stytra_version = None
-                repo = None
-
-                try:
-
-                    ####################### try get repo even during testing ###############################
-                    if "pytest" in os.path.basename(sys.argv[0]).lower():
-                        repo_path = next(
-                            (el for el in sys.argv[1:] if os.path.isdir(el)),
-                            os.getcwd(),
-                        )
-                    else:
-                        repo_path = sys.argv[0]
-
-                    repo = git.Repo(repo_path, search_parent_directories=True)
-                    git_hash = repo.head.object.hexsha
-                    #########################################################################################
-
-                except Exception:
-                    self.logger.info("Could not determine git hash")
-                finally:
-                    if repo is not None:
-                        repo.close()
 
                 try:
                     stytra_version = distribution_version("stytra")
@@ -322,7 +298,6 @@ class Experiment(QObject):
 
                 self.dc.add_static_data(
                     dict(
-                        git_hash=git_hash,
                         name=sys.argv[0],
                         arguments=self.arguments,
                         version=stytra_version,

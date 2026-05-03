@@ -22,7 +22,6 @@ DEPS = [
 
     # data, versioning, hardware
     "tables>=3.8,<3.9",
-    "GitPython>=3.1,<3.2",
     "pyFirmata>=1.1,<1.2",
 
     # misc Stytra dependencies
