@@ -233,14 +233,18 @@ class ProjectorAndCalibrationWidget(QWidget):
             self.button_calibrate.clicked.connect(self.calibrate)
             self.layout_calibrate.addWidget(self.button_calibrate)
 
-        self.label_calibrate = QLabel(self.calibrator.length_to_measure)
-        self.label_calibrate.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.label_calibrate_x = QLabel(self.calibrator.length_to_measure_x)
+        self.label_calibrate_x.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.label_calibrate_y = QLabel(self.calibrator.length_to_measure_y)
+        self.label_calibrate_y.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.calibrator_len_spin_x = ControlSpin(self.calibrator, "length_mm_x")
+        self.calibrator_len_spin_y = ControlSpin(self.calibrator, "length_mm_y")
+
         self.layout_calibrate.addWidget(self.button_show_calib)
-        self.layout_calibrate.addWidget(self.label_calibrate)
-
-        self.calibrator_len_spin = ControlSpin(self.calibrator, "length_mm")
-
-        self.layout_calibrate.addWidget(self.calibrator_len_spin)
+        self.layout_calibrate.addWidget(self.label_calibrate_x)
+        self.layout_calibrate.addWidget(self.calibrator_len_spin_x)
+        self.layout_calibrate.addWidget(self.label_calibrate_y)
+        self.layout_calibrate.addWidget(self.calibrator_len_spin_y)
 
         self.layout_calibrate.setContentsMargins(12, 0, 12, 12)
         self.container_layout.addLayout(self.layout_calibrate)
@@ -248,7 +252,8 @@ class ProjectorAndCalibrationWidget(QWidget):
 
     def update_size(self, size):
         self.calibrator.set_pixel_scale(size[0], size[1])
-        self.calibrator_len_spin.update_display()
+        self.calibrator_len_spin_x.update_display()
+        self.calibrator_len_spin_y.update_display()
 
     def toggle_calibration(self):
         """ """
