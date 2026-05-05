@@ -1,4 +1,3 @@
-from itertools import product
 from numbers import Real
 
 import numpy as np
@@ -12,7 +11,6 @@ from PyQt5.QtGui import (
     QBrush,
     QColor,
     QPen,
-    QTransform,
     QPolygon,
     QPolygonF,
     QRegion,
@@ -320,104 +318,49 @@ class BackgroundStimulus(PositionStimulus):
         self.background_color = background_color
         super().__init__(*args, **kwargs)
 
-    def get_unit_dims(self, w, h):
-        return w, h
+    def screen_mm_axes(self, w, h):
+        mm_px_x, mm_px_y = _mm_px_xy(self._experiment)
+        return np.arange(w) * mm_px_x, np.arange(h) * mm_px_y
 
-    def get_transform(self, w, h, x, y):
-        return QTransform().rotate(self.theta * 180 / np.pi).translate(x, y)
+    def rotation_centre_mm(self, w, h):
+        return 0.0, 0.0
 
-    def get_tile_ranges(self, imw, imh, w, h, tr: QTransform):
-        """Calculates the number of tiles depending on the transform.
+    def local_mm_coords(self, w, h):
+        x_mm, y_mm = self.screen_mm_axes(w, h)
+        x_grid, y_grid = np.meshgrid(x_mm, y_mm)
 
-        Parameters
-        ----------
-        imw
-        imh
-        w
-        h
-        tr
+        centre_x, centre_y = self.rotation_centre_mm(w, h)
+        x_shifted = x_grid - centre_x
+        y_shifted = y_grid - centre_y
 
-        Returns
-        -------
+        cos_theta = np.cos(self.theta)
+        sin_theta = np.sin(self.theta)
 
-        """
+        local_x = cos_theta * x_shifted + sin_theta * y_shifted + centre_x - self.x
+        local_y = -sin_theta * x_shifted + cos_theta * y_shifted + centre_y - self.y
 
-        # we find where the display surface is in the coordinate system of a single tile
-        corner_points = [
-            np.array([0.0, 0.0]),
-            np.array([w, 0.0]),
-            np.array([w, h]),
-            np.array([0.0, h]),
-        ]
-        points_transformed = np.array(
-            [tr.inverted()[0].map(*cp) for cp in corner_points]
-        )
+        return local_x, local_y
 
-        # calculate the rectangle covering the transformed display surface
-        min_x, min_y = np.min(points_transformed, 0)
-        max_x, max_y = np.max(points_transformed, 0)
-
-        # count which tiles need to be drawn
-        x_start, x_end = (int(np.floor(min_x / imw)), int(np.ceil(max_x / imw)))
-        y_start, y_end = (int(np.floor(min_y / imh)), int(np.ceil(max_y / imh)))
-
-        return range(x_start, x_end + 1), range(y_start, y_end + 1)
+    def background_image(self, w, h, local_x, local_y):
+        return None
 
     def paint(self, p, w, h):
-        mm_px_x, mm_px_y = _mm_px_xy(self._experiment)
-
+        p.resetTransform()
         self.clip(p, w, h)
 
-        # draw the black background
+        p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor(*self.background_color)))
         p.drawRect(self._full_field_rect(w, h))
 
-        imw, imh = self.get_unit_dims(w, h)
-
-        dx = self.x / mm_px_x
-        dy = self.y / mm_px_y
-
-        # rotate the coordinate transform around the position of the fish
-        tr = self.get_transform(w, h, dx, dy)
-        p.setTransform(tr)
-        try:
-            for idx, idy in product(*self.get_tile_ranges(imw, imh, w, h, tr)):
-                self.draw_block(p, QPointF(idx * imw, idy * imh), w, h)
-        except ValueError:
-            print(self.x, self.y, self.theta)
-            print(imw, imh, w, h, tr)
-
-        p.resetTransform()
-
-    def draw_block(self, p, point, w, h):
-        """Has to be defined in each child of the class, defines what
-        is to be painted per tile of the repeating stimulus
-
-        Parameters
-        ----------
-        p :
-
-        point :
-
-        w :
-
-        h :
-
-
-        Returns
-        -------
-
-        """
-        pass
+        image = self.background_image(w, h, *self.local_mm_coords(w, h))
+        if image is not None:
+            p.drawImage(QPointF(0.0, 0.0), qimage2ndarray.array2qimage(image))
 
 
 class CenteredBackgroundStimulus(BackgroundStimulus):
-    def get_transform(self, w, h, x, y):
-        return (
-            QTransform().translate(-w / 2, -h / 2)
-            * super().get_transform(w, h, x, y)
-            * QTransform().translate(w / 2, h / 2)
-        )
+    def rotation_centre_mm(self, w, h):
+        mm_px_x, mm_px_y = _mm_px_xy(self._experiment)
+        return (w / 2) * mm_px_x, (h / 2) * mm_px_y
 
 
 class BaseSeamlessImageStimulus:
@@ -442,31 +385,32 @@ class BaseSeamlessImageStimulus:
                 self.background_name = background.name
             else:
                 self.background_name = "array {}x{}".format(*self._background.shape)
-        self._qbackground = None
+        self._background_array = None
 
     def initialise_external(self, experiment):
         super().initialise_external(experiment)
 
-        # Get background image from folder:
         if isinstance(self._background, str):
-            self._qbackground = qimage2ndarray.array2qimage(
+            self._background_array = np.asarray(
                 existing_file_background(
                     self._experiment.asset_dir + "/" + self._background
                 )
             )
         elif isinstance(self._background, Path):
-            self._qbackground = qimage2ndarray.array2qimage(
+            self._background_array = np.asarray(
                 existing_file_background(self._background)
             )
         else:
-            self._qbackground = qimage2ndarray.array2qimage(self._background)
+            self._background_array = np.asarray(self._background)
 
-    def get_unit_dims(self, w, h):
-        w, h = self._qbackground.width(), self._qbackground.height()
-        return w, h
+    def background_image(self, w, h, local_x, local_y):
+        mm_px_x, mm_px_y = _mm_px_xy(self._experiment)
+        bg_h, bg_w = self._background_array.shape[:2]
 
-    def draw_block(self, p, point, w, h):
-        p.drawImage(point, self._qbackground)
+        x_px = np.floor(np.mod(local_x, bg_w * mm_px_x) / mm_px_x).astype(int) % bg_w
+        y_px = np.floor(np.mod(local_y, bg_h * mm_px_y) / mm_px_y).astype(int) % bg_h
+
+        return self._background_array[y_px, x_px]
 
 
 class SeamlessImageStimulus(BaseSeamlessImageStimulus, BackgroundStimulus):
@@ -513,7 +457,6 @@ class GratingStimulus(BackgroundStimulus):
         self.color_1 = grating_col_1
         self.color_2 = grating_col_2
         self._pattern = None
-        self._qbackground = None
         self.name = "gratings"
 
     def _weights(self, local_x):
@@ -680,16 +623,10 @@ class RadialSineStimulus(VisualStimulus):
         self.phase += self._dt * self.velocity
 
     def paint(self, p, w, h):
-        mm_px_x, mm_px_y = _mm_px_xy(self._experiment)
-        x = (np.arange(w) - w / 2) * mm_px_x
-        y = (np.arange(h) - h / 2) * mm_px_y
+        x, y = _screen_mm_axes(w, h, self._experiment)
+        radius = np.sqrt(x[None, :] ** 2 + y[:, None] ** 2)
         self.image = np.round(
-            np.sin(
-                np.sqrt((x[None, :] ** 2 + y[:, None] ** 2) * (2 * np.pi / self.period))
-                + self.phase
-            )
-            * 127
-            + 127
+            (np.sin(2 * np.pi * radius / self.period + self.phase) + 1.0) * 127
         ).astype(np.uint8)
         p.drawImage(QPointF(0.0, 0.0), qimage2ndarray.array2qimage(self.image))
 
@@ -751,7 +688,6 @@ class WindmillStimulus(CenteredBackgroundStimulus):
         self.wave_shape = wave_shape
         self.name = "windmill"
         self._pattern = None
-        self._qbackground = None
 
     def _weights(self, local_x, local_y):
         angle = np.arctan2(local_y, local_x)
