@@ -1,4 +1,5 @@
 import numpy as np
+from PyQt5.QtGui import QTransform
 
 try:
     from random import choices
@@ -12,25 +13,6 @@ from stytra.stimulation.stimuli import (
     InterpolatedStimulus,
     Stimulus,
 )
-
-
-def _mm_px_xy(experiment):
-    calibrator = getattr(experiment, "calibrator", None)
-    if calibrator is None:
-        return 1.0, 1.0
-
-    return max(float(calibrator.mm_px_x), 1e-9), max(float(calibrator.mm_px_y), 1e-9)
-
-
-def _physical_unit_from_pixel_angle(theta, mm_px_x, mm_px_y):
-    vector = np.asarray(
-        [np.cos(theta) * mm_px_x, np.sin(theta) * mm_px_y], dtype=float
-    )
-    norm = np.linalg.norm(vector)
-    if norm <= 0 or not np.isfinite(norm):
-        return np.asarray([np.nan, np.nan], dtype=float)
-
-    return vector / norm
 
 
 class Basic_CL_1D(BackgroundStimulus, InterpolatedStimulus, DynamicStimulus):
@@ -374,37 +356,11 @@ class FishTrackingStimulus(PositionStimulus):
 
 
 class FishRelativeStimulus(BackgroundStimulus):
-    def local_mm_coords(self, w, h):
+    def get_transform(self, w, h, x, y):
         y_fish, x_fish, theta_fish = self._experiment.estimator.get_position()
-        if not np.isfinite([x_fish, y_fish, theta_fish]).all():
-            return super().local_mm_coords(w, h)
-
-        mm_px_x, mm_px_y = _mm_px_xy(self._experiment)
-        x_grid_px, y_grid_px = np.meshgrid(np.arange(w), np.arange(h))
-
-        fish_forward_mm = _physical_unit_from_pixel_angle(
-            theta_fish - np.pi / 2, mm_px_x, mm_px_y
+        if np.isnan(y_fish):
+            return super().get_transform(w, h, x, y)
+        rot_fish = (theta_fish - np.pi / 2) * 180 / np.pi
+        return super().get_transform(w, h, x, y) * (
+            QTransform().translate(x_fish, y_fish).rotate(rot_fish)
         )
-        if not np.isfinite(fish_forward_mm).all():
-            return super().local_mm_coords(w, h)
-
-        stim_x_axis_mm = np.asarray(
-            [
-                np.cos(self.theta) * fish_forward_mm[0]
-                - np.sin(self.theta) * fish_forward_mm[1],
-                np.sin(self.theta) * fish_forward_mm[0]
-                + np.cos(self.theta) * fish_forward_mm[1],
-            ],
-            dtype=float,
-        )
-        stim_y_axis_mm = np.asarray(
-            [-stim_x_axis_mm[1], stim_x_axis_mm[0]], dtype=float
-        )
-
-        dx_mm = (x_grid_px - x_fish) * mm_px_x
-        dy_mm = (y_grid_px - y_fish) * mm_px_y
-
-        local_x = stim_x_axis_mm[0] * dx_mm + stim_x_axis_mm[1] * dy_mm - self.x
-        local_y = stim_y_axis_mm[0] * dx_mm + stim_y_axis_mm[1] * dy_mm - self.y
-
-        return local_x, local_y
