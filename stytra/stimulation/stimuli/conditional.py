@@ -231,7 +231,7 @@ class ConditionalWrapper(DynamicStimulus):
 
 
 class SingleConditionalWrapper(ConditionalWrapper):
-    def chceck_condition_off(self):
+    def check_condition_off(self):
         return not self.check_condition_on()
 
 
