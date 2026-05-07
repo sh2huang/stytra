@@ -151,8 +151,7 @@ class GenerateStimuliMovie:
             )
 
             self.exp = s.exp
-            self.exp.calibrator.mm_px_x = 30 / 400
-            self.exp.calibrator.mm_px_y = 30 / 400
+            self.exp.calibrator.mm_px = 30 / 400
             s.exp.sig_data_saved.connect(self.waitend)
             s.exp.start_protocol()
             s.exp.app.exec_()

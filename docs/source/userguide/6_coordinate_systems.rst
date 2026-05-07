@@ -20,6 +20,5 @@ x and y coordinates are labelled the other way around in the estimator log. Thos
 The :attr:`~stytra.calibration.CircleCalibrator.cam_to_proj` and :attr:`~stytra.calibration.CircleCalibrator.proj-to_cam`
 matrices transform points from one coordinate system to another.
 
-Visual stimuli are usually configured to take dimensions in millimeters, whereas
-the horizontal and vertical scaling factors (``mm_px_x`` and ``mm_px_y``) are
-taken from the calibration procedure.
+Visual stimuli are usually configured to take dimensions in millimeters, whereas the scaling factor is taken from
+the calibration procedure.

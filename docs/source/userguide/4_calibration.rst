@@ -15,8 +15,8 @@ To calibrate the monitor for your experiment, first position the black
 stimulus screen on the monitor you are using for the experiment. Then, hit
 the show calibration button and drag around the ROI in the stytra GUI until
 the red rectangle covers the area you want to use for the stimulus and the
-cross is at the center. Finally, specify in the spin boxes the final physical
-width and height of the calibrator in millimeters.
+cross is at the center. Finally, specify in the spin box the final size of
+the lateral edge of the calibrator in centimeters.
 
 The calibration is saved in the last_stytra_config.json file, so once you
 have done it it maintains the same calibration for all subsequent experiments.
@@ -42,9 +42,3 @@ Due to screen or projector framerates, usually setting the camera framerate to 3
 Then, click calibrate (:red:`c`) and verify that the location of the camera image
 in the projected image makes sense. If not, try adjusting camera settings and
 calibrating again.
-
-For the physical scale, measure the two perpendicular sides of the projected
-triangle, not the longest side:
-
-- the horizontal side between the two lower dots sets ``mm_px_x``
-- the vertical side between the two left dots sets ``mm_px_y``

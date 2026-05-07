@@ -271,11 +271,9 @@ class CenteringWrapper(SingleConditionalWrapper):
 
     def check_condition_on(self):
         y, x, theta = self._experiment.estimator.get_position()
-        distance_sq_mm = self._experiment.calibrator.distance_squared_mm(
-            x - self.xc, y - self.yc
-        )
+        scale = self._experiment.calibrator.mm_px**2
         return (
-            x > 0 and distance_sq_mm <= self.margin
+            x > 0 and ((x - self.xc) ** 2 + (y - self.yc) ** 2) <= self.margin / scale
         )
 
     def paint(self, p, w, h):
@@ -326,20 +324,16 @@ class TwoRadiusCenteringWrapper(ConditionalWrapper):
 
     def check_condition_on(self):
         y, x, theta = self._experiment.estimator.get_position()
-        distance_sq_mm = self._experiment.calibrator.distance_squared_mm(
-            x - self.xc, y - self.yc
-        )
+        scale = self._experiment.calibrator.mm_px**2
         return (not np.isnan(x)) and (
-            distance_sq_mm <= self.margin_in
+            (x - self.xc) ** 2 + (y - self.yc) ** 2 <= self.margin_in / scale
         )
 
     def check_condition_off(self):
         y, x, theta = self._experiment.estimator.get_position()
-        distance_sq_mm = self._experiment.calibrator.distance_squared_mm(
-            x - self.xc, y - self.yc
-        )
+        scale = self._experiment.calibrator.mm_px**2
         return np.isnan(x) or (
-            distance_sq_mm > self.margin_out
+            (x - self.xc) ** 2 + (y - self.yc) ** 2 > self.margin_out / scale
         )
 
     def paint(self, p, w, h):

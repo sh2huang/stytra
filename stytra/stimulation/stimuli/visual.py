@@ -27,31 +27,6 @@ from stytra.stimulation.stimuli import (
 from stytra.stimulation.stimuli.backgrounds import existing_file_background
 
 
-def _mm_px_xy(experiment):
-    calibrator = getattr(experiment, "calibrator", None)
-    if calibrator is None:
-        return 1.0, 1.0
-
-    return max(float(calibrator.mm_px_x), 1e-9), max(float(calibrator.mm_px_y), 1e-9)
-
-
-def _screen_mm_axes(w, h, experiment):
-    mm_px_x, mm_px_y = _mm_px_xy(experiment)
-    x_mm = (np.arange(w) - w / 2) * mm_px_x
-    y_mm = (np.arange(h) - h / 2) * mm_px_y
-    return x_mm, y_mm
-
-
-def _local_mm_coords(w, h, experiment, theta=0, x=0, y=0):
-    x_mm, y_mm = _screen_mm_axes(w, h, experiment)
-    x_grid, y_grid = np.meshgrid(x_mm, y_mm)
-
-    local_x = np.cos(theta) * x_grid + np.sin(theta) * y_grid - x
-    local_y = -np.sin(theta) * x_grid + np.cos(theta) * y_grid - y
-
-    return local_x, local_y
-
-
 class VisualStimulus(Stimulus):
     """Stimulus class to paint programmatically on a canvas.
     For this subclass of Stimulus, their core function (paint()) is
@@ -364,7 +339,10 @@ class BackgroundStimulus(PositionStimulus):
         return range(x_start, x_end + 1), range(y_start, y_end + 1)
 
     def paint(self, p, w, h):
-        mm_px_x, mm_px_y = _mm_px_xy(self._experiment)
+        if self._experiment.calibrator is not None:
+            mm_px = self._experiment.calibrator.mm_px
+        else:
+            mm_px = 1
 
         self.clip(p, w, h)
 
@@ -374,8 +352,8 @@ class BackgroundStimulus(PositionStimulus):
 
         imw, imh = self.get_unit_dims(w, h)
 
-        dx = self.x / mm_px_x
-        dy = self.y / mm_px_y
+        dx = self.x / mm_px
+        dy = self.y / mm_px
 
         # rotate the coordinate transform around the position of the fish
         tr = self.get_transform(w, h, dx, dy)
@@ -516,30 +494,37 @@ class GratingStimulus(BackgroundStimulus):
         self._qbackground = None
         self.name = "gratings"
 
-    def _weights(self, local_x):
-        phase = np.mod(local_x, self.grating_period) / self.grating_period
-
-        if self.wave_shape == "square":
-            return (phase < 0.5).astype(float)
-        elif self.wave_shape == "sine":
-            return (np.sin(2 * np.pi * phase) + 1.0) / 2.0
-        else:
-            raise ValueError("Unsupported wave shape {}".format(self.wave_shape))
-
-    def paint(self, p, w, h):
-        local_x, _ = _local_mm_coords(
-            w, h, self._experiment, theta=self.theta, x=self.x, y=self.y
+    def create_pattern(self):
+        l = max(
+            2,
+            int(self.grating_period / (max(self._experiment.calibrator.mm_px, 0.0001))),
         )
-        weights = self._weights(local_x)
+        if self.wave_shape == "square":
+            self._pattern = np.ones((l, 3), np.uint8) * self.color_1
+            self._pattern[int(l / 2) :, :] = self.color_2
+        elif self.wave_shape == "sine":
+            # Define sinusoidally varying weights for the two colors and then
+            #  sum them in the pattern
+            w = (np.sin(2 * np.pi * np.linspace(1 / l, 1, l)) + 1) / 2
 
-        image = (
-            weights[:, :, None] * np.array(self.color_1)[None, None, :]
-            + (1 - weights)[:, :, None] * np.array(self.color_2)[None, None, :]
-        ).astype(np.uint8)
+            self._pattern = (
+                w[:, None] * np.array(self.color_1)[None, :]
+                + (1 - w[:, None]) * np.array(self.color_2)[None, :]
+            ).astype(np.uint8)
 
-        p.setPen(Qt.NoPen)
-        self.clip(p, w, h)
-        p.drawImage(QPointF(0.0, 0.0), qimage2ndarray.array2qimage(image))
+    def initialise_external(self, experiment):
+        super().initialise_external(experiment)
+        self.create_pattern()
+        # Get background image from folder:
+        self._qbackground = qimage2ndarray.array2qimage(self._pattern[None, :, :])
+
+    def get_unit_dims(self, w, h):
+        w, h = self._qbackground.width(), self._qbackground.height()
+        return w, h
+
+    def draw_block(self, p, point, w, h):
+        # Get background image from folder:
+        p.drawImage(point, self._qbackground)
 
 
 class PaintGratingStimulus(BackgroundStimulus):
@@ -571,20 +556,40 @@ class PaintGratingStimulus(BackgroundStimulus):
         self.name = "moving_gratings"
         self.barheight = 100
 
-    def paint(self, p, w, h):
-        local_x, _ = _local_mm_coords(
-            w, h, self._experiment, theta=self.theta, x=self.x, y=self.y
+    def get_unit_dims(self, w, h):
+        """
+        #TODO what does this thing define?
+        """
+        return (
+            int(self.grating_period / (max(self._experiment.calibrator.mm_px, 0.0001))),
+            self.barheight,
         )
-        mask = np.mod(local_x, self.grating_period) < (self.grating_period / 2.0)
 
-        image = np.zeros((h, w, 3), dtype=np.uint8)
-        image[:, :, :] = self.background_color
-        image[mask] = self.color
-
+    def draw_block(self, p, point, w, h):
+        """Function for drawing the gratings programmatically."""
         p.setPen(Qt.NoPen)
         p.setRenderHint(QPainter.Antialiasing)
-        self.clip(p, w, h)
-        p.drawImage(QPointF(0.0, 0.0), qimage2ndarray.array2qimage(image))
+        p.setBrush(QBrush(QColor(*self.color)))
+
+        bar_width = self.grating_period / (
+                2 * max(self._experiment.calibrator.mm_px, 0.0001)
+        )
+
+        p.drawRect(
+            QRectF(
+                float(point.x()),
+                float(point.y()),
+                float(bar_width),
+                float(self.barheight),
+            )
+        )
+
+
+class MovingGratingStimulus(PaintGratingStimulus, InterpolatedStimulus):
+    # TODO refactor to cisambiguate
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dynamic_parameters.append("x")
 
 
 class MovingGratingStimulus(PaintGratingStimulus, InterpolatedStimulus):
@@ -680,9 +685,9 @@ class RadialSineStimulus(VisualStimulus):
         self.phase += self._dt * self.velocity
 
     def paint(self, p, w, h):
-        mm_px_x, mm_px_y = _mm_px_xy(self._experiment)
-        x = (np.arange(w) - w / 2) * mm_px_x
-        y = (np.arange(h) - h / 2) * mm_px_y
+        x, y = (
+            (np.arange(d) - d / 2) * self._experiment.calibrator.mm_px for d in (w, h)
+        )
         self.image = np.round(
             np.sin(
                 np.sqrt((x[None, :] ** 2 + y[:, None] ** 2) * (2 * np.pi / self.period))
@@ -722,6 +727,19 @@ class FishOverlayStimulus(PositionStimulus):
             )
         )
 
+
+def z_func_windmill(x, y, arms):
+    """Function for sinusoidal windmill of arbitrary number of arms
+    symmetrical with respect to perpendicular axes (for even n)
+    """
+    if np.mod(arms, 2) == 0:
+        return np.sin(np.arctan((x / y)) * arms + np.pi / 2)
+    else:
+        return np.cos(np.arctan((x / y)) * arms) * (y < 0).astype(int) + np.cos(
+            np.arctan((x / y)) * arms + np.pi
+        ) * (y >= 0).astype(int)
+
+
 class WindmillStimulus(CenteredBackgroundStimulus):
     """Class for drawing a rotating windmill (radial wedges in alternating colors).
     For moving gratings use subclass
@@ -753,28 +771,34 @@ class WindmillStimulus(CenteredBackgroundStimulus):
         self._pattern = None
         self._qbackground = None
 
-    def _weights(self, local_x, local_y):
-        angle = np.arctan2(local_y, local_x)
-        weights = (np.cos(self.n_arms * angle) + 1.0) / 2.0
-
+    def create_pattern(self, side_len=500):
+        side_len = side_len * 2
+        # Create weights for a windmill to be multiplied by colors:
+        x = (np.arange(side_len) - side_len / 2) / side_len
+        X, Y = np.meshgrid(x, x)  # grid of points
+        W = z_func_windmill(X, Y, self.n_arms)  # evaluation of the function
+        W = ((W + 1) / 2)[:, :, np.newaxis]  # normalize and add color axis
         if self.wave_shape == "square":
-            return (weights >= 0.5).astype(float)
+            W = (W > 0.5).astype(np.uint8)  # binarize for square gratings
 
-        return weights
+        # Multiply by color:
+        self._pattern = W * self.color_1 + (1 - W) * self.color_2
+        self._qbackground = qimage2ndarray.array2qimage(self._pattern)
 
-    def paint(self, p, w, h):
-        local_x, local_y = _local_mm_coords(
-            w, h, self._experiment, theta=self.theta, x=self.x, y=self.y
+    def initialise_external(self, experiment):
+        super().initialise_external(experiment)
+        self.create_pattern()
+
+    def draw_block(self, p, point, w, h):
+        if self._qbackground.height() < h * 1.5 or self._qbackground.width() < w * 1.5:
+            self.create_pattern(1.5 * np.max([h, w]))
+
+        point = QPointF(
+            float(w - self._qbackground.width()) / 2.0,
+            float(h - self._qbackground.height()) / 2.0,
         )
-        weights = self._weights(local_x, local_y)
-        image = (
-            weights[:, :, None] * np.array(self.color_1)[None, None, :]
-            + (1 - weights)[:, :, None] * np.array(self.color_2)[None, None, :]
-        ).astype(np.uint8)
-
-        p.setPen(Qt.NoPen)
-        self.clip(p, w, h)
-        p.drawImage(QPointF(0.0, 0.0), qimage2ndarray.array2qimage(image))
+        p.setRenderHint(QPainter.HighQualityAntialiasing)
+        p.drawImage(point, self._qbackground)
 
 
 class MovingWindmillStimulus(WindmillStimulus, InterpolatedStimulus):
@@ -810,20 +834,43 @@ class HighResWindmillStimulus(CenteredBackgroundStimulus):
         self.n_arms = n_arms
         self.name = "windmill"
 
-    def paint(self, p, w, h):
-        local_x, local_y = _local_mm_coords(
-            w, h, self._experiment, theta=self.theta, x=self.x, y=self.y
-        )
-        mask = np.cos(self.n_arms * np.arctan2(local_y, local_x)) >= 0
-
-        image = np.zeros((h, w, 3), dtype=np.uint8)
-        image[:, :, :] = 0
-        image[mask] = self.color
-
+    def draw_block(self, p, point, w, h):
+        # Painting settings:
         p.setPen(Qt.NoPen)
         p.setRenderHint(QPainter.Antialiasing)
-        self.clip(p, w, h)
-        p.drawImage(QPointF(0.0, 0.0), qimage2ndarray.array2qimage(image))
+
+        # Here for changing black with another color (to be debugged)
+        # p.setBrush(QBrush(QColor(*self.color_2)))
+        # # p.drawRect(QRect(-1, -1, (w + 2)*1.5, (h + 2)*1.5))
+
+        p.setBrush(QBrush(QColor(*self.color)))
+
+        # To draw a windmill, a set of consecutive triangles will be painted:
+        mid_x = int(w / 2)  # calculate image center
+        mid_y = int(h / 2)
+
+        # calculate angles for each triangle:
+        angles = np.arange(0, np.pi * 2, (np.pi * 2) / self.n_arms)
+        angles += np.pi / 2 + np.pi / (2 * self.n_arms)
+        # angular width of the white arms, by default equal to dark ones
+        size = np.pi / self.n_arms
+        # radius of triangles (much larger than frame)
+        rad = (w**2 + h**2) ** (1 / 2)
+        # loop over angles and draw consecutive triangles
+        for deg in np.array(angles):
+            polyg_points = [
+                QPointF(float(mid_x), float(mid_y)),
+                QPointF(
+                    float(mid_x + rad * np.cos(deg)),
+                    float(mid_y + rad * np.sin(deg)),
+                ),
+                QPointF(
+                    float(mid_x + rad * np.cos(deg + size)),
+                    float(mid_y + rad * np.sin(deg + size)),
+                ),
+            ]
+            polygon = QPolygonF(polyg_points)
+            p.drawPolygon(polygon)
 
 
 class HighResMovingWindmillStimulus(HighResWindmillStimulus, InterpolatedStimulus):
@@ -925,7 +972,12 @@ class CalibratedCircleStimulus(VisualStimulus, DynamicStimulus):
     def paint(self, p, w, h):
         super().paint(p, w, h)
 
-        mm_px_x, mm_px_y = _mm_px_xy(self._experiment)
+        if self._experiment.calibrator is not None:
+            mm_px = self._experiment.calibrator.mm_px
+        else:
+            mm_px = 1
+
+        #print(mm_px)
 
         # draw the background
         p.setPen(Qt.NoPen)
@@ -936,9 +988,9 @@ class CalibratedCircleStimulus(VisualStimulus, DynamicStimulus):
         # draw the circle
         p.setBrush(QBrush(QColor(*self.circle_color)))
         p.drawEllipse(
-            QPointF(self.x / mm_px_x, self.y / mm_px_y),
-            self.radius / mm_px_x,
-            self.radius / mm_px_y,
+            QPointF(self.x / mm_px, self.y / mm_px),
+            self.radius / mm_px,
+            self.radius / mm_px,
         )
 
 

@@ -17,87 +17,43 @@ class CalibrationException(Exception):
 class Calibrator(ParametrizedQt):
     """ """
 
-    def __init__(self, mm_px_x=0.2, mm_px_y=0.2):
+    def __init__(self, mm_px=0.2):
         super().__init__(name="stimulus/calibration_params")
         self.enabled = False
 
-        self.mm_px_x = Param(mm_px_x)
-        self.mm_px_y = Param(mm_px_y)
-        self.length_mm_x = Param(30.0, limits=(1, 800), unit="mm")
-        self.length_mm_y = Param(30.0, limits=(1, 800), unit="mm")
-        self.length_px_x = Param(None)
-        self.length_px_y = Param(None)
+        self.mm_px = Param(mm_px)
+        self.length_mm = Param(30.0, limits=(1, 800), unit="mm")
+        self.length_px = Param(None)
         self.cam_to_proj = Param(None)
         self.proj_to_cam = Param(None)
 
-        self.length_to_measure_x = "do not use the base class as a calibrator"
-        self.length_to_measure_y = "do not use the base class as a calibrator"
+        self.length_to_measure = "do not use the base class as a calibrator"
 
         self.sig_param_changed.connect(self.set_physical_scale)
 
     def toggle(self):
         """ """
-        self.enabled = not self.enabled
-
-    @staticmethod
-    def _safe_scale(value):
-        return max(float(value), 1e-9)
-
-    def mm_to_px_x(self, value):
-        return value / self._safe_scale(self.mm_px_x)
-
-    def mm_to_px_y(self, value):
-        return value / self._safe_scale(self.mm_px_y)
-
-    def px_to_mm_x(self, value):
-        return value * self._safe_scale(self.mm_px_x)
-
-    def px_to_mm_y(self, value):
-        return value * self._safe_scale(self.mm_px_y)
-
-    def mm_to_px(self, x, y):
-        return self.mm_to_px_x(x), self.mm_to_px_y(y)
-
-    def px_to_mm(self, x, y):
-        return self.px_to_mm_x(x), self.px_to_mm_y(y)
-
-    def distance_squared_mm(self, dx_px, dy_px):
-        return self.px_to_mm_x(dx_px) ** 2 + self.px_to_mm_y(dy_px) ** 2
-
-    def scale_for_angle(self, theta):
-        return np.sqrt(
-            (np.cos(theta) * self._safe_scale(self.mm_px_x)) ** 2
-            + (np.sin(theta) * self._safe_scale(self.mm_px_y)) ** 2
-        )
+        self.enabled = ~self.enabled
 
     def set_physical_scale(self, change):
         """Calculate mm/px from calibrator length"""
-        self.block_signal = True
+        if change.get("length_mm", None) is not None:
+            if self.length_px is not None:
+                self.block_signal = True
+                self.mm_px = self.length_mm / self.length_px
+                self.block_signal = False
 
-        if change.get("length_mm_x", None) is not None and self.length_px_x is not None:
-            self.mm_px_x = self.length_mm_x / self.length_px_x
-        if change.get("length_mm_y", None) is not None and self.length_px_y is not None:
-            self.mm_px_y = self.length_mm_y / self.length_px_y
-
-        if change.get("length_px_x", None) is not None and self.length_px_x is not None:
-            self.length_mm_x = self.px_to_mm_x(self.length_px_x)
-        if change.get("length_px_y", None) is not None and self.length_px_y is not None:
-            self.length_mm_y = self.px_to_mm_y(self.length_px_y)
-
-        if change.get("mm_px_x", None) is not None and self.length_px_x is not None:
-            self.length_mm_x = self.px_to_mm_x(self.length_px_x)
-        if change.get("mm_px_y", None) is not None and self.length_px_y is not None:
-            self.length_mm_y = self.px_to_mm_y(self.length_px_y)
-
-        self.block_signal = False
+        if change.get("length_px", None) is not None:
+            if self.length_px is not None:
+                self.block_signal = True
+                self.length_mm = self.length_px * self.mm_px
+                self.block_signal = False
 
     def set_pixel_scale(self, w, h):
         """ "Set pixel size, need to be called by the projector widget on resizes"""
         self.block_signal = True
-        self.length_px_x = w
-        self.length_px_y = h
-        self.length_mm_x = self.px_to_mm_x(self.length_px_x)
-        self.length_mm_y = self.px_to_mm_y(self.length_px_y)
+        self.length_px = w
+        self.length_mm = self.length_px * self.mm_px
         self.block_signal = False
 
     def paint_calibration_pattern(self, p, h, w):
@@ -132,23 +88,19 @@ class CrossCalibrator(Calibrator):
     ):
         super().__init__(*args, **kwargs)
 
-        self.length_px_x = self.mm_to_px_x(self.length_mm_x)
-        self.length_px_y = self.mm_to_px_y(self.length_mm_y)
+        self.length_px = self.length_mm / self.mm_px
         self.length_is_fixed = False
         self.transparent = transparent
 
         if calibration_length == "outside":
             self.outside = True
-            self.length_to_measure_x = "width of the rectangle"
-            self.length_to_measure_y = "height of the rectangle"
+            self.length_to_measure = "height of the rectangle"
 
         else:
             self.outside = False
-            self.length_to_measure_x = "horizontal arm of the cross"
-            self.length_to_measure_y = "vertical arm of the cross"
+            self.length_to_measure = "a line of the cross"
             if fixed_length is not None:
-                self.length_px_x = fixed_length
-                self.length_px_y = fixed_length
+                self.length_px = fixed_length
                 self.length_is_fixed = True
 
     def paint_calibration_pattern(self, p, h, w):
@@ -173,15 +125,14 @@ class CrossCalibrator(Calibrator):
         else:
             p.setBrush(QBrush(QColor(0, 0, 0, 255)))
         p.drawRect(QRectF(1.0, 1.0, float(w) - 2.0, float(h) - 2.0))
-        l2x = self.length_px_x / 2
-        l2y = self.length_px_y / 2
+        l2 = self.length_px / 2
         cw = w // 2
         ch = h // 2
 
         # draw the cross and the axis labels
-        p.drawLine(QLineF(float(cw - l2x), float(ch), float(cw + l2x), float(h // 2)))
+        p.drawLine(QLineF(float(cw - l2), float(ch), float(cw + l2), float(h // 2)))
         p.drawText(QPointF(float(w * 3 // 4), float(ch - 5)), "x")
-        p.drawLine(QLineF(float(cw), float(h // 2 + l2y), float(cw), float(ch - l2y)))
+        p.drawLine(QLineF(float(cw), float(h // 2 + l2), float(cw), float(ch - l2)))
         p.drawText(QPointF(float(cw + 5), float(h * 3 // 4)), "y")
 
         # draw the "fish outline"
@@ -200,16 +151,10 @@ class CrossCalibrator(Calibrator):
     def set_pixel_scale(self, w, h):
         """ "Set pixel size, need to be called by the projector widget on resizes"""
         if not self.length_is_fixed:
-            self.block_signal = True
             if self.outside:
-                self.length_px_x = w
-                self.length_px_y = h
+                self.length_px = h
             else:
-                self.length_px_x = w / 2
-                self.length_px_y = h / 2
-            self.length_mm_x = self.px_to_mm_x(self.length_px_x)
-            self.length_mm_y = self.px_to_mm_y(self.length_px_y)
-            self.block_signal = False
+                self.length_px = max(h / 2, w / 2)
 
 
 class CircleCalibrator(Calibrator):
@@ -219,47 +164,14 @@ class CircleCalibrator(Calibrator):
         super().__init__(*args, **kwargs)
         self.triangle_length = Param(dh, (2, 400), unit="px")
         self.r = r
+        self.length_px = dh * 2
         self.points = None
         self.points_cam = None
-        self.length_to_measure_x = "horizontal right-angle side (between lower dots)"
-        self.length_to_measure_y = "vertical right-angle side (between left dots)"
-        self.set_pixel_scale(None, None)
-
-    def _half_triangle_width_px(self):
-        return float(self.triangle_length) / 2.0
-
-    def _half_triangle_height_px(self):
-        return float(self.triangle_length) * math.sqrt(3) / 2.0
-
-    def _right_triangle_side_lengths_px(self):
-        return float(self.triangle_length), 2.0 * self._half_triangle_height_px()
-
-    def _centres(self, w, h):
-        d2h = self._half_triangle_width_px()
-        d2w = self._half_triangle_height_px()
-        ch = h / 2.0
-        cw = w / 2.0
-        return np.array(
-            [
-                (cw - d2h, ch + d2w),
-                (cw + d2h, ch + d2w),
-                (cw - d2h, ch - d2w),
-            ],
-            dtype=float,
-        )
+        self.length_to_measure = "longest side of the triangle"
 
     def set_pixel_scale(self, w, h):
         """ "Set pixel size, need to be called by the projector widget on resizes"""
-        self.block_signal = True
-        self.length_px_x, self.length_px_y = self._right_triangle_side_lengths_px()
-        self.length_mm_x = self.px_to_mm_x(self.length_px_x)
-        self.length_mm_y = self.px_to_mm_y(self.length_px_y)
-        self.block_signal = False
-
-    def set_physical_scale(self, change):
-        super().set_physical_scale(change)
-        if change.get("triangle_length", None) is not None:
-            self.set_pixel_scale(None, None)
+        self.length_px = self.triangle_length * 2
 
     def paint_calibration_pattern(self, p, h, w, draw=True):
         """
@@ -281,8 +193,13 @@ class CircleCalibrator(Calibrator):
         """
         assert isinstance(p, QPainter)
 
+        d2h = self.triangle_length // 2
+        d2w = int(self.triangle_length * math.sqrt(3) // 2)
+        ch = h // 2
+        cw = w // 2
         # the three points sorted in ascending angle order (30, 60, 90)
-        centres = self._centres(w, h)
+        centres = [(cw - d2h, ch + d2w), (cw + d2h, ch + d2w), (cw - d2h, ch - d2w)]
+        centres = np.array(centres)
         self.points = centres[np.argsort(CircleCalibrator._find_angles(centres)), :]
 
         if draw:
