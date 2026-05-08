@@ -4,7 +4,7 @@ from queue import Empty
 import numpy as np
 import pyqtgraph as pg
 from PyQt5.QtCore import QRectF, QPointF, QTimer
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QToolButton
 
 from skimage.io import imsave
 from numba import jit
@@ -533,6 +533,51 @@ class CameraViewCalib(CameraViewWidget):
         self.points_calib = pg.ScatterPlotItem()
         self.display_area.addItem(self.points_calib)
 
+        self.btn_show_calibration_overlay = QToolButton()
+        self.btn_show_calibration_overlay.setAutoRaise(True)
+        self.btn_show_calibration_overlay.setText("")
+        self.btn_show_calibration_overlay.setCheckable(True)
+        self.btn_show_calibration_overlay.setToolTip(
+            "Show calibration points in camera view"
+        )
+        self.btn_show_calibration_overlay.setFixedSize(48, 48)
+        self.btn_show_calibration_overlay.setStyleSheet(
+            "QToolButton {"
+            "border: none;"
+            "border-radius: 4px;"
+            "background: rgba(255, 255, 255, 0);"
+            "}"
+            "QToolButton:hover {"
+            "background: rgba(255, 255, 255, 80);"
+            "}"
+            "QToolButton:checked {"
+            "background: rgba(255, 255, 255, 110);"
+            "}"
+            "QToolButton:pressed {"
+            "background: rgba(255, 255, 255, 140);"
+            "}"
+        )
+        self.btn_show_calibration_overlay.setEnabled(
+            getattr(self.experiment, "calibrator", None) is not None
+        )
+        self.btn_show_calibration_overlay.toggled.connect(
+            self.toggle_calibration_overlay
+        )
+        self.layout_control.addWidget(self.btn_show_calibration_overlay)
+
+    def toggle_calibration_overlay(self, visible):
+        if visible:
+            self.show_current_calibration()
+        else:
+            self.points_calib.clear()
+
+    def show_current_calibration(self):
+        calibrator = getattr(self.experiment, "calibrator", None)
+        self.show_calibration(calibrator)
+        data = getattr(self.points_calib, "data", None)
+        if data is None or len(data) == 0:
+            self.btn_show_calibration_overlay.setChecked(False)
+
     def show_calibration(self, calibrator):
         """
 
@@ -545,23 +590,30 @@ class CameraViewCalib(CameraViewWidget):
         -------
 
         """
-        if calibrator.proj_to_cam is not None:
-            camera_points = (
-                np.pad(
-                    calibrator.points,
-                    ((0, 0), (0, 1)),
-                    mode="constant",
-                    constant_values=1,
-                )
-                @ calibrator.proj_to_cam.T
+        self.points_calib.clear()
+
+        if calibrator is None:
+            return
+
+        if calibrator.proj_to_cam is None or getattr(calibrator, "points", None) is None:
+            return
+
+        camera_points = (
+            np.pad(
+                np.asarray(calibrator.points),
+                ((0, 0), (0, 1)),
+                mode="constant",
+                constant_values=1,
             )
+            @ np.asarray(calibrator.proj_to_cam).T
+        )
 
-            points_dicts = []
-            for point in camera_points:
-                xn, yn = point[::-1]
-                points_dicts.append(dict(x=xn, y=yn, size=8, brush=(210, 10, 10)))
+        points_dicts = []
+        for point in camera_points:
+            xn, yn = point
+            points_dicts.append(dict(x=xn, y=yn, size=8, brush=(210, 10, 10)))
 
-            self.points_calib.setData(points_dicts)
+        self.points_calib.setData(points_dicts)
 
     def set_pos_from_tree(self):
         pass
