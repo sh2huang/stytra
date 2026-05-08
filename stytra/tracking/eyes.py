@@ -89,13 +89,16 @@ class EyeTrackingMethod(ImageToDataNode):
             e = (np.nan,) * 10
             message = "E: eyes not detected!"
         else:
-            e = (
-                e[0][0][::-1]
-                + e[0][1][::-1]
-                + (-e[0][2],)
-                + e[1][0][::-1]
-                + e[1][1][::-1]
-                + (-e[1][2],)
+            e = tuple(
+                value
+                for ellipse in e
+                for value in (
+                    ellipse[0][0],
+                    ellipse[0][1],
+                    ellipse[1][0],
+                    ellipse[1][1],
+                    -ellipse[2],
+                )
             )
         return NodeOutput([message], self._output_type(*e))
 
@@ -177,12 +180,12 @@ def _fit_ellipse(thresholded_image):
 
         # Get the two largest ellipses (i.e. the eyes, not any dirt)
         contours = sorted(contours, key=lambda c: c.shape[0], reverse=True)[:2]
-        # Sort them that first ellipse is always the left eye (in the image)
-        contours = sorted(contours, key=np.max)
 
         # Fit the ellipses for the two eyes
         if len(contours[0]) > 4 and len(contours[1]) > 4:
             e = [cv2.fitEllipse(contours[i]) for i in range(2)]
+            # Keep the identity stable by ordering eyes from left to right.
+            e = sorted(e, key=lambda ell: ell[0][0])
             return e
         else:
             return False

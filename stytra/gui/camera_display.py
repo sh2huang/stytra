@@ -456,7 +456,7 @@ class EyeTrackingSelection(CameraSelection):
             if len(self.experiment.acc_tracking.stored_data) > 1:
                 self.roi_eyes.setPen(dict(color=(5, 40, 200), width=3))
                 checkifnan = getattr(retrieved_data, "th_e0")
-                for i, o in enumerate([0, 5]):
+                for i in range(2):
                     if checkifnan == checkifnan:
                         for ell, col in zip(
                             self.curves_eyes, [(5, 40, 230), (40, 230, 5)]
@@ -475,20 +475,22 @@ class EyeTrackingSelection(CameraSelection):
                         th = -getattr(
                             retrieved_data, "th_e{}".format(i)
                         )  # eye angle from tracked ellipse
-                        c_x = int(
+                        half_w = int(
                             getattr(retrieved_data, "dim_x_e{}".format(i)) / 2
-                        )  # ellipse center x and y
-                        c_y = int(getattr(retrieved_data, "dim_y_e{}".format(i)) / 2)
+                        )
+                        half_h = int(
+                            getattr(retrieved_data, "dim_y_e{}".format(i)) / 2
+                        )
 
-                        if c_x != 0 and c_y != 0:
+                        if half_w != 0 and half_h != 0:
                             th_conv = th * (np.pi / 180)  # in radiants now
 
                             # rotate based on different from previous angle:
                             self.curves_eyes[i].rotate(th - self.pre_th[i])
 
                             # Angle and rad of center point from left lower corner:
-                            c_th = np.arctan(c_x / c_y)
-                            c_r = np.sqrt(c_x**2 + c_y**2)
+                            c_th = np.arctan(half_h / half_w)
+                            c_r = np.sqrt(half_w**2 + half_h**2)
 
                             # Coords of the center after rotation around left lower
                             # corner, to be corrected when setting position:
@@ -501,16 +503,16 @@ class EyeTrackingSelection(CameraSelection):
                             # for the box position, for the ellipse dimensions and
                             # for the rotation around corner instead of center.
                             self.curves_eyes[i].setPos(
-                                getattr(retrieved_data, "pos_y_e{}".format(i))
-                                + pos[0]
-                                - c_x
-                                + (c_x - center_after[1]),
                                 getattr(retrieved_data, "pos_x_e{}".format(i))
+                                + pos[0]
+                                - half_w
+                                + (half_w - center_after[1]),
+                                getattr(retrieved_data, "pos_y_e{}".format(i))
                                 + pos[1]
-                                - c_y
-                                + (c_y - center_after[0]),
+                                - half_h
+                                + (half_h - center_after[0]),
                             )
-                            self.curves_eyes[i].setSize((c_y * 2, c_x * 2))
+                            self.curves_eyes[i].setSize((half_w * 2, half_h * 2))
 
                             self.pre_th[i] = th
 
