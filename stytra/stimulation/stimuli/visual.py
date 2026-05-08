@@ -586,13 +586,6 @@ class PaintGratingStimulus(BackgroundStimulus):
 
 
 class MovingGratingStimulus(PaintGratingStimulus, InterpolatedStimulus):
-    # TODO refactor to cisambiguate
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.dynamic_parameters.append("x")
-
-
-class MovingGratingStimulus(PaintGratingStimulus, InterpolatedStimulus):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.dynamic_parameters.append("x")
@@ -728,12 +721,8 @@ def z_func_windmill(x, y, arms):
     """Function for sinusoidal windmill of arbitrary number of arms
     symmetrical with respect to perpendicular axes (for even n)
     """
-    if np.mod(arms, 2) == 0:
-        return np.sin(np.arctan2(y, x) * arms + np.pi / 2)
-    else:
-        return np.cos(np.arctan2(y, x) * arms) * (y < 0).astype(int) + np.cos(
-            np.arctan2(y, x) * arms + np.pi
-        ) * (y >= 0).astype(int)
+    theta = np.arctan2(y, x)
+    return np.cos(theta * arms)
 
 
 class WindmillStimulus(CenteredBackgroundStimulus):

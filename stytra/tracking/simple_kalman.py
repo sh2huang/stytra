@@ -23,4 +23,5 @@ def update_inplace(z, x, P, R):
     I_KH[0, 0] -= K[0]
     I_KH[1, 0] = -K[1]
 
-    P[:, :] = ((I_KH @ P) @ I_KH.T) + R * (K @ K.T)
+    K_col = K.reshape(2, 1)
+    P[:, :] = ((I_KH @ P) @ I_KH.T) + R * (K_col @ K_col.T)

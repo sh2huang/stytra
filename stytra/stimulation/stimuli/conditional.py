@@ -64,6 +64,7 @@ class PauseOutsideStimulus(DynamicStimulus):
             self.active.duration += self._dt
             self._elapsed_difference += self._dt
         else:
+            self.value = True
             if self.reset_phase > 0 and not self._previous_value:
                 phase_reset = max(self.active.current_phase - (self.reset_phase - 1), 0)
                 self.active._elapsed = self.active.phase_times[phase_reset]
@@ -74,7 +75,6 @@ class PauseOutsideStimulus(DynamicStimulus):
                 )
                 self.duration += time_added
                 self._elapsed_difference += time_added
-                self.value = True
 
         self.active._elapsed = self._elapsed - self._elapsed_difference
         self._previous_value = self.value

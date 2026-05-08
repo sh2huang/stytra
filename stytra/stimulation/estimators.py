@@ -315,7 +315,7 @@ class SimulatedPositionEstimator(Estimator):
         """
         super().__init__(*args, **kwargs)
         self.motion = motion
-        self._output_type = namedtuple("f", ["x", "y", "theta"])
+        self._output_type = namedtuple("f", ["y", "x", "theta"])
 
     def get_position(self):
         t = (datetime.datetime.now() - self.exp.t0).total_seconds()
