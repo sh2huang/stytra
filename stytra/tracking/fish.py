@@ -20,14 +20,23 @@ from collections import namedtuple
 
 
 def _fish_column_names(i_fish, n_segments):
-    return [
+    filtered_columns = [
         "f{:d}_x".format(i_fish),
         "f{:d}_vx".format(i_fish),
         "f{:d}_y".format(i_fish),
         "f{:d}_vy".format(i_fish),
         "f{:d}_theta".format(i_fish),
         "f{:d}_vtheta".format(i_fish),
-    ] + ["f{:d}_theta_{:02d}".format(i_fish, i) for i in range(n_segments)]
+    ]
+    tail_columns = [
+        "f{:d}_theta_{:02d}".format(i_fish, i) for i in range(n_segments)
+    ]
+    raw_columns = [
+        "f{:d}_x_raw".format(i_fish),
+        "f{:d}_y_raw".format(i_fish),
+        "f{:d}_theta_raw".format(i_fish),
+    ]
+    return filtered_columns + tail_columns + raw_columns
 
 
 class FishTrackingMethod(ImageToDataNode):
@@ -93,7 +102,7 @@ class FishTrackingMethod(ImageToDataNode):
             (1, 50),
             desc="How many frames does the fish persist for if it is not detected",
         ),
-        prediction_uncertainty: Param(0.1, (0.0, 10.0, 0.0001)),
+        prediction_uncertainty: Param(100, (1, 1000)),
         fish_area_min: Param(200, (1, 4000)),
         fish_area_max: Param(1200, (1, 4000)),
         border_margin: Param(5, (0, 100)),
@@ -243,6 +252,7 @@ class FishTrackingMethod(ImageToDataNode):
 
 spec = [
     ("n_fish", int64),
+    ("n_tail_angles", int64),
     ("coords", float64[:, :]),
     ("i_not_updated", int64[:]),
     ("F", float64[:, :]),
@@ -260,7 +270,8 @@ class Fishes(object):
         self, n_fish_max, pos_std, angle_std, n_segments, pred_coef, persist_fish_for
     ):
         self.n_fish = n_fish_max
-        self.coords = np.full((n_fish_max, 6 + n_segments), np.nan)
+        self.n_tail_angles = n_segments
+        self.coords = np.full((n_fish_max, 6 + n_segments + 3), np.nan)
         self.uncertainties = np.array((pos_std, angle_std, angle_std))
         self.def_P = np.zeros((3, 2, 2))
         for i, uc in enumerate(self.uncertainties):
@@ -277,8 +288,13 @@ class Fishes(object):
         self.persist_fish_for = persist_fish_for
 
     def predict(self):
+        raw_start = 6 + self.n_tail_angles
         for i_fish in range(self.n_fish):
             if not np.isnan(self.coords[i_fish, 0]):
+                self.coords[i_fish, 6:raw_start] = np.nan
+                self.coords[i_fish, raw_start] = np.nan
+                self.coords[i_fish, raw_start + 1] = np.nan
+                self.coords[i_fish, raw_start + 2] = np.nan
                 for i_coord in range(0, 6, 2):
                     predict_inplace(
                         self.coords[i_fish, i_coord : i_coord + 2],
@@ -291,6 +307,7 @@ class Fishes(object):
                     self.coords[i_fish, :] = np.nan
 
     def update(self, new_fish):
+        raw_start = 6 + self.n_tail_angles
         for i_fish in range(self.n_fish):
             if not np.isnan(self.coords[i_fish, 0]):
                 if self.is_close(new_fish, i_fish) and self.i_not_updated[i_fish] != 0:
@@ -307,16 +324,19 @@ class Fishes(object):
                             self.uncertainties[i_coord],
                         )
                     # update tail angles
-                    self.coords[i_fish, 6:] = new_fish[3:]
+                    self.coords[i_fish, 6:raw_start] = new_fish[3:]
+                    self.coords[i_fish, raw_start : raw_start + 3] = new_fish[:3]
                     self.i_not_updated[i_fish] = 0
                     return True
 
     def add_fish(self, new_fish):
+        raw_start = 6 + self.n_tail_angles
         for i_fish in range(self.n_fish):
             if np.isnan(self.coords[i_fish, 0]):
                 self.coords[i_fish, 0:6:2] = new_fish[:3]
                 self.coords[i_fish, 1:6:2] = 0.0
-                self.coords[i_fish, 6:] = new_fish[3:]
+                self.coords[i_fish, 6:raw_start] = new_fish[3:]
+                self.coords[i_fish, raw_start : raw_start + 3] = new_fish[:3]
                 self.Ps[i_fish] = self.def_P
                 self.i_not_updated[i_fish] = 0
                 return True

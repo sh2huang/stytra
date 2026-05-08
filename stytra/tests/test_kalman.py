@@ -26,7 +26,13 @@ def test_fish():
                     -0.03333376,
                     0.0,
                     0.0,
+                    1.0,
+                    1.0,
+                    np.pi + 2 * np.pi,
                 ]
             ]
         ),
     )
+
+    fshs.predict()
+    assert np.all(np.isnan(fshs.coords[0, -3:]))

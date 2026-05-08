@@ -52,6 +52,6 @@ Yes! There should be no issues, as long as the computer has enough cores and the
 
 I have used the freely swimming fish tracking. What are the units of my output?
 ...............................................................................
-The fish location in camera pixel coordinates (see coordinate systems), the direction of the tail (theta) and relative tail angles (theta_00 -  theta_xx) describing the tail shape. The first 3 outputs additionally have velocities estimated through Kalman filtering that have to be normalised by the framerate.
+The fish location in camera pixel coordinates (see coordinate systems), the direction of the tail (theta) and relative tail angles (theta_00 -  theta_xx) describing the tail shape. The first 3 outputs additionally have velocities estimated through Kalman filtering that have to be normalised by the framerate. The unfiltered per-frame detections are also saved as x_raw, y_raw and theta_raw.
 
 

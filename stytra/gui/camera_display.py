@@ -622,15 +622,17 @@ class CameraViewCalib(CameraViewWidget):
 
 
 @jit(nopython=True)
-def _tail_plot_items_from_coords(coords, seglen):
+def _tail_plot_items_from_coords(coords, seglen, n_segments):
     """Computes tail line segments and node positions from accumulator data.
 
     Parameters
     ----------
     coords
-        per fish, will be x, y, theta, theta_00, theta_01, theta_02...
+        per fish, will be x, vx, y, vy, theta, vtheta, theta_00...
     seglen
         length of a single segment
+    n_segments
+        number of tail line segments, including the segment aligned with theta
 
     Returns
     -------
@@ -642,7 +644,8 @@ def _tail_plot_items_from_coords(coords, seglen):
     line_ys = []
     point_xs = []
     point_ys = []
-    angles = np.zeros(coords.shape[1] - 5)
+    angles = np.zeros(n_segments)
+    tail_stop = 6 + n_segments - 1
     for i_fish in range(coords.shape[0]):
         if np.isnan(coords[i_fish, 0]):
             continue
@@ -650,7 +653,7 @@ def _tail_plot_items_from_coords(coords, seglen):
         point_xs.append(coords[i_fish, 0])
         point_ys.append(coords[i_fish, 2])
         angles[0] = coords[i_fish, 4]
-        angles[1:] = angles[0] + coords[i_fish, 6:]
+        angles[1:] = angles[0] + coords[i_fish, 6:tail_stop]
         for an in angles:
             start_x = point_xs[-1]
             start_y = point_ys[-1]
@@ -711,7 +714,7 @@ class CameraViewFish(CameraViewCalib):
                     self.tracking_params.tail_length / self.tracking_params.n_segments
                 )
                 line_xs, line_ys, point_xs, point_ys = _tail_plot_items_from_coords(
-                    retrieved_data, tail_len
+                    retrieved_data, tail_len, n_points_tail
                 )
                 self.points_fish.setData(x=point_xs, y=point_ys)
                 self.lines_fish.setData(x=line_xs, y=line_ys)
