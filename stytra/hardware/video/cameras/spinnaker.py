@@ -32,7 +32,7 @@ class SpinnakerCamera(Camera):
             nodemap.GetNode("AcquisitionMode")
         )
         if not PySpin.IsAvailable(acquisition_mode_node) or not PySpin.IsWritable(
-            acquisition_mode_node
+                acquisition_mode_node
         ):
             messages.append(
                 "W: May not be able to set acquisition mode to continuous (enum retrieval)."
@@ -43,7 +43,7 @@ class SpinnakerCamera(Camera):
             "Continuous"
         )
         if not PySpin.IsAvailable(
-            acquisition_mode_continuous_node
+                acquisition_mode_continuous_node
         ) or not PySpin.IsReadable(acquisition_mode_continuous_node):
             messages.append(
                 "W: Unable to set acquisition mode to continuous (entry retrieval)."
@@ -51,12 +51,111 @@ class SpinnakerCamera(Camera):
         acquisition_mode_continuous = acquisition_mode_continuous_node.GetValue()
         acquisition_mode_node.SetIntValue(acquisition_mode_continuous)
 
+        # Set downsampling through camera binning before ROI
+        # downsampling=2: Sensor binning 2x
+        # downsampling=4: Sensor binning 2x + ISP binning 2x
+        try:
+            downsampling = int(getattr(self, "downsampling", 1))
+
+            if downsampling not in (1, 2, 4):
+                messages.append(
+                    "W: Spinnaker downsampling only supports 1, 2, or 4. "
+                    "Ignoring downsampling={0}.".format(downsampling)
+                )
+
+            elif downsampling > 1:
+
+                def set_enum_entry(enum_name, preferred_entries):
+                    enum_node = PySpin.CEnumerationPtr(nodemap.GetNode(enum_name))
+
+                    if not PySpin.IsAvailable(enum_node) or not PySpin.IsWritable(
+                            enum_node
+                    ):
+                        messages.append(
+                            "W: {0} is not available/writable.".format(enum_name)
+                        )
+                        return False
+
+                    for entry_name in preferred_entries:
+                        entry_node = enum_node.GetEntryByName(entry_name)
+                        if PySpin.IsAvailable(entry_node) and PySpin.IsReadable(
+                                entry_node
+                        ):
+                            enum_node.SetIntValue(entry_node.GetValue())
+                            return True
+
+                    messages.append(
+                        "W: None of {0} are available for {1}.".format(
+                            preferred_entries, enum_name
+                        )
+                    )
+                    return False
+
+                def set_current_binning_to_2():
+                    # Prefer Average. If unavailable, fall back to Additive.
+                    # Some cameras may use "Sum" instead of "Additive", so keep it
+                    # as a final fallback without changing the intended behavior.
+                    for mode_name in ("BinningHorizontalMode", "BinningVerticalMode"):
+                        set_enum_entry(mode_name, ("Average", "Additive", "Sum"))
+
+                    for node_name in ("BinningHorizontal", "BinningVertical"):
+                        binning_node = PySpin.CIntegerPtr(nodemap.GetNode(node_name))
+
+                        if not PySpin.IsAvailable(binning_node) or not PySpin.IsWritable(
+                                binning_node
+                        ):
+                            messages.append(
+                                "W: {0} is not available/writable.".format(node_name)
+                            )
+                            continue
+
+                        value_to_set = 2
+
+                        if value_to_set > binning_node.GetMax():
+                            messages.append(
+                                "W: {0} max is {1}; cannot set to 2.".format(
+                                    node_name, binning_node.GetMax()
+                                )
+                            )
+                            value_to_set = binning_node.GetMax()
+
+                        if value_to_set < binning_node.GetMin():
+                            messages.append(
+                                "W: {0} min is {1}; cannot set to 2.".format(
+                                    node_name, binning_node.GetMin()
+                                )
+                            )
+                            value_to_set = binning_node.GetMin()
+
+                        inc = binning_node.GetInc()
+                        if inc > 0 and np.mod(value_to_set, inc) != 0:
+                            value_to_set = (value_to_set // inc) * inc
+                            messages.append(
+                                "W: Need to set {0} in increments of {1}, resetting to {2}.".format(
+                                    node_name, inc, value_to_set
+                                )
+                            )
+
+                        binning_node.SetValue(value_to_set)
+
+                # Sensor binning
+                set_enum_entry("BinningSelector", ("Sensor",))
+                set_current_binning_to_2()
+
+                # ISP binning, only for total downsampling 4
+                if downsampling == 4:
+                    set_enum_entry("BinningSelector", ("ISP",))
+                    set_current_binning_to_2()
+
+        except Exception as ex:
+            messages.append("E:Could not set downsampling/binning. Exception: {0}.".format(ex))
+
         # Set ROI first if applicable (framerate limits depend on it)
         try:
             # Note set width/height before x/y offset because upon
             # initialization max offset is 0 because full frame size is assumed
             for i, (s, o) in enumerate(
-                zip(["Width", "Height"], ["OffsetX", "OffsetY"])
+                    zip(["Width", "Height"], ["OffsetX", "OffsetY"])
             ):
 
                 roi_node = PySpin.CIntegerPtr(nodemap.GetNode(s))
@@ -94,7 +193,7 @@ class SpinnakerCamera(Camera):
             nodemap.GetNode("AcquisitionFrameRateEnable")
         )
         if PySpin.IsAvailable(
-            node_acquisition_frame_rate_control_enable
+                node_acquisition_frame_rate_control_enable
         ):  # older simpler api
             self.cam.AcquisitionFrameRateEnable.SetValue(True)
         else:  # newer more complex api
@@ -110,7 +209,7 @@ class SpinnakerCamera(Camera):
                 nodemap.GetNode("AcquisitionFrameRateEnabled")
             )
             if not PySpin.IsAvailable(enable_rate_mode) or not PySpin.IsWritable(
-                enable_rate_mode
+                    enable_rate_mode
             ):
                 messages.append(
                     "W:enable_rate_mode not available/writable. Aborting..."
@@ -225,13 +324,14 @@ class SpinnakerCamera(Camera):
         return messages
 
     def read(self):
+        image_result = None
         try:
             #  Retrieve next received image
             image_result = self.cam.GetNextImage()
 
             #  Ensure image completion
             if image_result.IsIncomplete():
-                return
+                return None
 
             else:
                 image_converted = np.array(
@@ -240,11 +340,14 @@ class SpinnakerCamera(Camera):
                 #  Images retrieved directly from the camera (i.e. non-converted
                 #  images) need to be released in order to keep from filling the
                 #  buffer.
-                image_result.Release()
                 return image_converted
 
         except PySpin.SpinnakerException as ex:
             raise CameraError("Frame not read")
+
+        finally:
+            if image_result is not None:
+                image_result.Release()
 
     def release(self):
         self.cam.EndAcquisition()

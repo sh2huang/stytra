@@ -95,6 +95,10 @@ class XimeaCamera(Camera):
 
             if param == "framerate":
                 self.cam.set_framerate(val)
+
+            if param == "gain":
+                self.cam.set_gain(float(val))
+
         except xiapi.Xi_error:
             return ["E:Invalid {} value {:0.2f}".format(param, val)]
 
