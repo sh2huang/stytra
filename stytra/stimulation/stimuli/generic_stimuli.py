@@ -262,8 +262,8 @@ class CombinerStimulus(DynamicStimulus):
 
     def update(self):
         for s in self._stim_list:
-            s.update()
             s._elapsed = self._elapsed
+            s.update()
 
     def initialise_external(self, experiment):
         super().initialise_external(experiment)

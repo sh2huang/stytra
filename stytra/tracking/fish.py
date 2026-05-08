@@ -109,7 +109,7 @@ class FishTrackingMethod(ImageToDataNode):
             self.fishes.predict()
 
         area_scale = bg_downsample * bg_downsample
-        border_margin = border_margin // bg_downsample
+        #border_margin = border_margin // bg_downsample
 
         # downsample background
         if bg_downsample > 1:

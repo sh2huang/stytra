@@ -230,7 +230,7 @@ class PositionEstimator(Estimator):
         if change_thresholds is not None:
             self.change_thresholds = np.array(change_thresholds)
 
-        self._output_type = namedtuple("f", ["x", "y", "theta"])
+        self._output_type = namedtuple("f", ["y", "x", "theta"])
 
     def get_camera_position(self):
         past_coords = {
@@ -242,17 +242,15 @@ class PositionEstimator(Estimator):
         return past_coords["f0_x"], past_coords["f0_y"], past_coords["f0_theta"]
 
     def get_velocity(self):
-        vel = np.diff(
-            self.acc_tracking.get_last_n(self.velocity_window)[["f0_x", "f0_y"]].values,
-            0,
-        )
-        return np.sqrt(np.sum(vel**2))
+        xy = self.acc_tracking.get_last_n(self.velocity_window)[["f0_x", "f0_y"]].values
+        dxy = np.diff(xy, axis=0)
+        return np.nanmean(np.linalg.norm(dxy, axis=1))
 
     def get_istantaneous_velocity(self):
         vel_xy = self.acc_tracking.get_last_n(self.velocity_window)[
             ["f0_vx", "f0_vy"]
         ].values
-        return np.sqrt(np.sum(vel_xy**2))
+        return np.nanmean(np.linalg.norm(vel_xy, axis=1))
 
     def reset(self):
         super().reset()
@@ -275,14 +273,12 @@ class PositionEstimator(Estimator):
 
             x, y = projmat @ np.array([past_coords.f0_x, past_coords.f0_y, 1.0])
 
-            theta = np.arctan2(
-                *(
-                    projmat[:, :2]
-                    @ np.array(
-                        [np.cos(past_coords.f0_theta), np.sin(past_coords.f0_theta)]
-                    )[::-1]
-                )
-            )
+            v_cam = np.array([
+                np.cos(past_coords.f0_theta),
+                np.sin(past_coords.f0_theta),
+            ])
+            v_proj = projmat[:, :2] @ v_cam
+            theta = np.arctan2(v_proj[1], v_proj[0])
         else:
             x, y, theta = past_coords.f0_x, past_coords.f0_y, past_coords.f0_theta
 

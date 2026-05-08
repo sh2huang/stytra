@@ -119,10 +119,9 @@ class Basic_CL_1D(BackgroundStimulus, InterpolatedStimulus, DynamicStimulus):
             self.fish_swimming = False
 
         # Use method for calculating final velocity and update:
+        super().update()
         self.calculate_final_vel()
         self.x += self._dt * self.vel
-
-        super().update()
 
     def calculate_final_vel(self):
         self.vel = self.base_vel - self.fish_vel * int(self.fish_swimming)
@@ -169,7 +168,7 @@ class CalibratingClosedLoop1D(Basic_CL_1D):
         self.final_vel = np.nan
         self.median_calib = np.nan
         self.est_gain = 0
-        self.min_bout_n = 30
+        self.min_bout_n = min_bout_n
         self.valid_gain_range = (-80, -10)
         self.min_bout_duration = 0.2
 
@@ -196,7 +195,7 @@ class CalibratingClosedLoop1D(Basic_CL_1D):
 
                 self._experiment.estimator.base_gain = self.est_gain
 
-        self.bout_vel = []
+        self.bout_vig = []
 
     def stop(self):
         if (
@@ -238,8 +237,8 @@ class GainChangerStimulus(Stimulus):
     """
 
     def __init__(self, newgain=1):
-        self.duration = 0.001
         super().__init__()
+        self.duration = 0.001
         self.name = "fix_gain_calibration_cl1D"
         self.newgain = newgain
 

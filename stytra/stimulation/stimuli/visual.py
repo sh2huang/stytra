@@ -688,13 +688,9 @@ class RadialSineStimulus(VisualStimulus):
         x, y = (
             (np.arange(d) - d / 2) * self._experiment.calibrator.mm_px for d in (w, h)
         )
+        r = np.sqrt(x[None, :] ** 2 + y[:, None] ** 2)
         self.image = np.round(
-            np.sin(
-                np.sqrt((x[None, :] ** 2 + y[:, None] ** 2) * (2 * np.pi / self.period))
-                + self.phase
-            )
-            * 127
-            + 127
+            np.sin(2 * np.pi * r / self.period + self.phase) * 127 + 127
         ).astype(np.uint8)
         p.drawImage(QPointF(0.0, 0.0), qimage2ndarray.array2qimage(self.image))
 
@@ -733,10 +729,10 @@ def z_func_windmill(x, y, arms):
     symmetrical with respect to perpendicular axes (for even n)
     """
     if np.mod(arms, 2) == 0:
-        return np.sin(np.arctan((x / y)) * arms + np.pi / 2)
+        return np.sin(np.arctan2(y, x) * arms + np.pi / 2)
     else:
-        return np.cos(np.arctan((x / y)) * arms) * (y < 0).astype(int) + np.cos(
-            np.arctan((x / y)) * arms + np.pi
+        return np.cos(np.arctan2(y, x) * arms) * (y < 0).astype(int) + np.cos(
+            np.arctan2(y, x) * arms + np.pi
         ) * (y >= 0).astype(int)
 
 
