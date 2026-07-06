@@ -96,7 +96,7 @@ class SpinnakerCamera(Camera):
                     # Some cameras may use "Sum" instead of "Additive", so keep it
                     # as a final fallback without changing the intended behavior.
                     for mode_name in ("BinningHorizontalMode", "BinningVerticalMode"):
-                        set_enum_entry(mode_name, ("Average", "Additive", "Sum"))
+                        set_enum_entry(mode_name, "Additive")
 
                     for node_name in ("BinningHorizontal", "BinningVertical"):
                         binning_node = PySpin.CIntegerPtr(nodemap.GetNode(node_name))

@@ -36,7 +36,7 @@ Manufacturer    Stytra camera type  ROI  Exposure  Framerate  Gain
 Ximea           ximea               Yes  Yes       Yes        Yes
 FLIR/PointGrey  spinnaker           Yes  Yes       Yes        Yes
 AVT             avt                 No   No        No         No
-Basler          basler              No   Yes       ?          ?
+Basler          basler              Yes  Yes       ?          Yes
 Mikrotron       mikrotron           Yes  Yes       Yes        No
 OpenCV          opencv              No   ?         ?          ?
 ==============  ==================  ===  ========  =========  ====
