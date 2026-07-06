@@ -1,5 +1,11 @@
 from PyQt5.QtCore import Qt, QRectF, pyqtSignal
-from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout, QPushButton
+from PyQt5.QtWidgets import (
+    QLabel,
+    QWidget,
+    QHBoxLayout,
+    QPushButton,
+    QSpinBox,
+)
 
 import numpy as np
 import pyqtgraph as pg
@@ -26,11 +32,13 @@ class ProjectorViewer(pg.GraphicsLayoutWidget):
     """
 
     sig_dim_changed = pyqtSignal(tuple)
+    sig_roi_changed = pyqtSignal(tuple, tuple)
 
     def __init__(self, *args, display_size=(1280, 800), display, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.display = display
+        self.display_size = display_size
 
         self.view_box = pg.ViewBox(invertY=True, lockAspect=1, enableMouse=False)
         self.addItem(self.view_box)
@@ -78,17 +86,26 @@ class ProjectorViewer(pg.GraphicsLayoutWidget):
     def set_roi(self):
         """ """
         if not self.setting_param_val:
-            self.roi_box.setPos(self.display.pos)
-            self.roi_box.setSize(self.display.size)
+            self.set_roi_values(self.display.pos, self.display.size)
+
+    def set_roi_values(self, pos, size):
+        """Set ROI from numeric controls and sync display parameters."""
+        blocked = self.roi_box.blockSignals(True)
+        self.roi_box.setPos(pos)
+        self.roi_box.setSize(size)
+        self.roi_box.blockSignals(blocked)
+        self.set_param_val()
 
     def set_param_val(self):
         """ """
         self.setting_param_val = True
+        pos = tuple([int(p) for p in self.roi_box.pos()])
         size = tuple([int(p) for p in self.roi_box.size()])
         self.display.size = size
         self.sig_dim_changed.emit(size)
 
-        self.display.pos = tuple([int(p) for p in self.roi_box.pos()])
+        self.display.pos = pos
+        self.sig_roi_changed.emit(pos, size)
         self.setting_param_val = False
 
     def display_calibration_pattern(
@@ -224,6 +241,37 @@ class ProjectorAndCalibrationWidget(QWidget):
 
         self.widget_proj_viewer.sig_dim_changed.connect(self.update_size)
 
+        self.updating_roi_controls = False
+        self.layout_roi_controls = QHBoxLayout()
+
+        display_width, display_height = self.widget_proj_viewer.display_size
+        self.roi_x_offset_spin = self.make_roi_spin(0, display_width - 1)
+        self.roi_y_offset_spin = self.make_roi_spin(0, display_height - 1)
+        self.roi_x_size_spin = self.make_roi_spin(1, display_width)
+        self.roi_y_size_spin = self.make_roi_spin(1, display_height)
+        self.roi_controls = (
+            self.roi_x_offset_spin,
+            self.roi_y_offset_spin,
+            self.roi_x_size_spin,
+            self.roi_y_size_spin,
+        )
+
+        self.add_roi_control("X offset", self.roi_x_offset_spin)
+        self.add_roi_control("Y offset", self.roi_y_offset_spin)
+        self.add_roi_control("X size", self.roi_x_size_spin)
+        self.add_roi_control("Y size", self.roi_y_size_spin)
+        self.layout_roi_controls.addStretch()
+        self.layout_roi_controls.setContentsMargins(12, 0, 12, 6)
+        self.container_layout.addLayout(self.layout_roi_controls)
+
+        for spin in self.roi_controls:
+            spin.valueChanged.connect(self.set_roi_from_controls)
+
+        self.widget_proj_viewer.sig_roi_changed.connect(self.update_roi_controls)
+        self.update_roi_controls(
+            experiment.window_display.pos, experiment.window_display.size
+        )
+
         self.layout_calibrate = QHBoxLayout()
         self.button_show_calib = QPushButton("Show calibration")
         self.button_show_calib.clicked.connect(self.toggle_calibration)
@@ -245,6 +293,40 @@ class ProjectorAndCalibrationWidget(QWidget):
         self.layout_calibrate.setContentsMargins(12, 0, 12, 12)
         self.container_layout.addLayout(self.layout_calibrate)
         self.setLayout(self.container_layout)
+
+    def make_roi_spin(self, minimum, maximum):
+        spin = QSpinBox()
+        spin.setRange(minimum, maximum)
+        spin.setSingleStep(1)
+        spin.setKeyboardTracking(False)
+        spin.setSuffix(" px")
+        spin.setMaximumWidth(90)
+        return spin
+
+    def add_roi_control(self, label, spin):
+        self.layout_roi_controls.addWidget(QLabel(label))
+        self.layout_roi_controls.addWidget(spin)
+
+    def update_roi_controls(self, pos, size):
+        self.updating_roi_controls = True
+        values = tuple([int(p) for p in pos]) + tuple([int(p) for p in size])
+        for spin, value in zip(self.roi_controls, values):
+            spin.setValue(value)
+        self.updating_roi_controls = False
+
+    def set_roi_from_controls(self, _=None):
+        if self.updating_roi_controls:
+            return
+
+        display_width, display_height = self.widget_proj_viewer.display_size
+        x_offset = self.roi_x_offset_spin.value()
+        y_offset = self.roi_y_offset_spin.value()
+        x_size = min(self.roi_x_size_spin.value(), display_width - x_offset)
+        y_size = min(self.roi_y_size_spin.value(), display_height - y_offset)
+
+        self.widget_proj_viewer.set_roi_values(
+            (x_offset, y_offset), (x_size, y_size)
+        )
 
     def update_size(self, size):
         self.calibrator.set_pixel_scale(size[0], size[1])
