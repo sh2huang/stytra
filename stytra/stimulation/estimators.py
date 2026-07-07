@@ -223,7 +223,7 @@ class PositionEstimator(Estimator):
         super().__init__(*args, **kwargs)
         self.calibrator = self.exp.calibrator
         self.last_location = None
-        self.past_values = None
+        self.past_values = {}
 
         self.velocity_window = velocity_window
         self.change_thresholds = change_thresholds
@@ -233,13 +233,7 @@ class PositionEstimator(Estimator):
         self._output_type = namedtuple("f", ["y", "x", "theta"])
 
     def get_camera_position(self):
-        past_coords = {
-            name: value
-            for name, value in zip(
-                self.acc_tracking.columns, self.acc_tracking.get_last_n(1)[0, :]
-            )
-        }
-        return past_coords["f0_x"], past_coords["f0_y"], past_coords["f0_theta"]
+        return self.get_position(coordinates="camera", log=False)
 
     def get_velocity(self):
         xy = self.acc_tracking.get_last_n(self.velocity_window)[["f0_x", "f0_y"]].values
@@ -254,9 +248,9 @@ class PositionEstimator(Estimator):
 
     def reset(self):
         super().reset()
-        self.past_values = None
+        self.past_values = {}
 
-    def get_position(self):
+    def get_position(self, coordinates="projector", log=True):
         if len(self.acc_tracking.stored_data) == 0 or not np.isfinite(
             self.acc_tracking.stored_data[-1].f0_x
         ):
@@ -266,7 +260,9 @@ class PositionEstimator(Estimator):
         past_coords = self.acc_tracking.stored_data[-1]
         t = self.acc_tracking.times[-1]
 
-        if not self.calibrator.cam_to_proj is None:
+        if coordinates == "camera":
+            x, y, theta = past_coords.f0_x, past_coords.f0_y, past_coords.f0_theta
+        elif coordinates == "projector" and not self.calibrator.cam_to_proj is None:
             projmat = np.array(self.calibrator.cam_to_proj)
             if projmat.shape != (2, 3):
                 projmat = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
@@ -279,24 +275,30 @@ class PositionEstimator(Estimator):
             ])
             v_proj = projmat[:, :2] @ v_cam
             theta = np.arctan2(v_proj[1], v_proj[0])
-        else:
+        elif coordinates == "projector":
             x, y, theta = past_coords.f0_x, past_coords.f0_y, past_coords.f0_theta
+        else:
+            raise ValueError(
+                "PositionEstimator coordinates must be 'projector' or 'camera'"
+            )
 
         c_values = np.array((y, x, theta))
 
         if self.change_thresholds is not None:
 
-            if self.past_values is None:
-                self.past_values = np.array(c_values)
+            past_values = self.past_values.get(coordinates, None)
+            if past_values is None:
+                self.past_values[coordinates] = np.array(c_values)
             else:
-                deltas = c_values - self.past_values
+                deltas = c_values - past_values
                 deltas[2] = reduce_to_pi(deltas[2])
                 sel = np.abs(deltas) > self.change_thresholds
-                self.past_values[sel] = c_values[sel]
-                c_values = self.past_values
+                past_values[sel] = c_values[sel]
+                c_values = past_values
 
         logout = self._output_type(*c_values)
-        self.log.update_list(t, logout)
+        if log:
+            self.log.update_list(t, logout)
 
         return c_values
 
