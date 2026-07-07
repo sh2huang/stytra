@@ -396,7 +396,7 @@ class CameraControlParameters(ParametrizedQt):
         self.framerate = Param(
             150.0, limits=(1, 700), unit=" Hz", desc="Framerate (Hz)"
         )
-        self.gain = Param(1.0, limits=(0.1, 12), desc="Camera amplification gain")
+        self.gain = Param(1.0, limits=(0.1, 48), desc="Camera amplification gain")
         self.ring_buffer_length = Param(
             300, (1, 2000), desc="Rolling buffer that saves the last items", gui=False
         )

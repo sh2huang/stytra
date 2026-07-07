@@ -16,8 +16,8 @@ class BaslerCamera(Camera):
 
     # Change these two values to switch binning policy, e.g.
     # BINNING_SELECTOR = "Sensor"; BINNING_MODE = "Average"
-    BINNING_SELECTOR = "Region1"
-    BINNING_MODE = "Sum"
+    BINNING_SELECTOR = "Sensor"
+    BINNING_MODE = "Average"
 
     def __init__(self, cam_idx=0, **kwargs):
         super().__init__(**kwargs)
