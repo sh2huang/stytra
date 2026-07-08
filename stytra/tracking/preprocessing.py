@@ -103,10 +103,12 @@ class BackgroundSubtractor(ImageToImageNode):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, name="bgsub", **kwargs)
         self.background_image = None
+        self.background_changed = False
         self.i = 0
 
     def reset(self):
         self.background_image = None
+        self.background_changed = False
 
     def _process(
         self,
@@ -116,13 +118,16 @@ class BackgroundSubtractor(ImageToImageNode):
         only_darker: Param(True),
     ):
         messages = []
+        self.background_changed = False
         if self.background_image is None:
             self.background_image = im.astype(np.float32)
+            self.background_changed = True
             messages.append("I:New backgorund image set")
         elif self.i == 0:
             self.background_image[:, :] = im.astype(np.float32) * np.float32(
                 learning_rate
             ) + self.background_image * np.float32(1 - learning_rate)
+            self.background_changed = True
 
         self.i = (self.i + 1) % learn_every
 

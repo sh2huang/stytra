@@ -2,6 +2,7 @@ import traceback
 
 import numpy as np
 from multiprocessing import Queue, Event
+from queue import Empty
 from pathlib import Path
 
 from stytra.experiments import VisualExperiment
@@ -241,8 +242,13 @@ class CameraVisualExperiment(VisualExperiment):
         """
         Finishes the recording process and joins the frame recorder.
         """
-        self.frame_recorder.finish_event.set()
-        self.frame_recorder.join()
+        frame_recorder = getattr(self, "frame_recorder", None)
+        if frame_recorder is None:
+            return
+
+        frame_recorder.finish_event.set()
+        if frame_recorder.is_alive():
+            frame_recorder.join()
 
     def excepthook(self, exctype, value, tb) -> None:
         if self.recording is not None:
@@ -251,7 +257,8 @@ class CameraVisualExperiment(VisualExperiment):
         traceback.print_tb(tb)
         print("{0}: {1}".format(exctype, value))
         self.camera.kill_event.set()
-        self.camera.join()
+        if self.camera.is_alive():
+            self.camera.join()
 
 
 class TrackingExperiment(CameraVisualExperiment):
@@ -298,6 +305,7 @@ class TrackingExperiment(CameraVisualExperiment):
         """
 
         self.processing_params_queue = Queue()
+        self.tracking_state_queue = Queue(maxsize=1)
         self.second_output_queue = second_output_queue
         self.tracking_output_queue = NamedTupleQueue()
         self.finished_sig = Event()
@@ -380,11 +388,37 @@ class TrackingExperiment(CameraVisualExperiment):
             finished_signal=self.camera.kill_event,
             pipeline=self.pipeline_cls,
             processing_parameter_queue=self.processing_params_queue,
+            state_queue=self.tracking_state_queue,
             output_queue=self.tracking_output_queue,
             second_output_queue=self.second_output_queue,
             recording_signal=recording_event,
             gui_framerate=20,
         )
+
+    def sync_tracking_background_from_process(self) -> bool:
+        """
+        Copies the latest background image from the live tracking process to this process.
+        """
+        latest_state = None
+        while True:
+            try:
+                latest_state = self.tracking_state_queue.get_nowait()
+            except Empty:
+                break
+
+        if latest_state is None:
+            return False
+
+        try:
+            node = self.pipeline.node_dict[latest_state["node_path"]]
+        except KeyError:
+            return False
+
+        if not hasattr(node, "background_image"):
+            return False
+
+        node.background_image = latest_state["background_image"].astype(np.float32)
+        return True
 
     def reset(self) -> None:
         super().reset()
@@ -480,5 +514,10 @@ class TrackingExperiment(CameraVisualExperiment):
         traceback.print_tb(tb)
         print("{0}: {1}".format(exctype, value))
         super()._finish_recording()
-        self.camera.join()
-        self.frame_dispatcher.join()
+        self.camera.kill_event.set()
+        if self.camera.is_alive():
+            self.camera.join()
+
+        frame_dispatcher = getattr(self, "frame_dispatcher", None)
+        if frame_dispatcher is not None and frame_dispatcher.is_alive():
+            frame_dispatcher.join()

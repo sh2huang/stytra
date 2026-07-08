@@ -1,6 +1,8 @@
 from setuptools import setup, find_packages
 
 DEPS = [
+    "setuptools>=65,<81",
+
     # GUI
     "PyQt5>=5.15,<5.16",
     "pyqtgraph>=0.13,<0.14",

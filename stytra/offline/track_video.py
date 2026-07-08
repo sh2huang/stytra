@@ -22,6 +22,53 @@ import pandas as pd
 import json
 
 
+class OpenCVVideoReader:
+    """Small adapter matching the imageio reader API used by offline tracking."""
+
+    def __init__(self, input_path):
+        import cv2
+
+        self.cv2 = cv2
+        self.cap = cv2.VideoCapture(str(input_path))
+        if not self.cap.isOpened():
+            raise OSError("Could not open video file: {}".format(input_path))
+
+    def count_frames(self):
+        return int(self.cap.get(self.cv2.CAP_PROP_FRAME_COUNT))
+
+    def get_length(self):
+        return self.count_frames()
+
+    def close(self):
+        self.cap.release()
+
+    def __iter__(self):
+        while True:
+            ok, frame = self.cap.read()
+            if not ok:
+                break
+            if frame.ndim == 3:
+                frame = self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2RGB)
+            yield frame
+
+
+def get_video_reader(input_path):
+    try:
+        return imageio.get_reader(str(input_path), "ffmpeg")
+    except ImportError as exc:
+        try:
+            return OpenCVVideoReader(input_path)
+        except Exception as cv_exc:
+            raise ImportError(
+                "Could not open video with imageio's FFMPEG plugin or OpenCV. "
+                "OpenCV error: {}. "
+                "Install the missing conda dependency with:\n"
+                "C:\\Users\\huang\\AppData\\Local\\anaconda3\\condabin\\conda.bat "
+                "run -n stytra python -m pip install \"imageio[ffmpeg]\""
+                .format(cv_exc)
+            ) from exc
+
+
 class EmptyProtocol(Protocol):
     name = "Offline"
 
@@ -65,30 +112,38 @@ class OfflineToolbar(QToolBar):
         fileformat = self.cmb_fmt.currentText()
 
         self.exp.camera.kill_event.set()
-        reader = imageio.get_reader(str(self.input_path), "ffmpeg")
+        sync_background = getattr(self.exp, "sync_tracking_background_from_process", None)
+        if sync_background is not None and sync_background():
+            self.diag_track.lbl_status.setText("Using current preview background")
+        reader = get_video_reader(self.input_path)
         data = []
-        self.exp.window_main.stream_plot.toggle_freeze()
+        try:
+            self.exp.window_main.stream_plot.toggle_freeze()
 
-        output_name = str(self.output_path) + "." + fileformat
-        self.diag_track.show()
-        if hasattr(reader, "count_frames"):
-            l = reader.count_frames()
-        else:
-            l = reader.get_length()
-        self.diag_track.prog_track.setMaximum(l)
-        self.diag_track.lbl_status.setText("Tracking to " + output_name)
+            output_name = str(self.output_path) + "." + fileformat
+            self.diag_track.show()
+            if hasattr(reader, "count_frames"):
+                l = reader.count_frames()
+            else:
+                l = reader.get_length()
+            self.diag_track.prog_track.setMaximum(l)
+            self.diag_track.lbl_status.setText("Tracking to " + output_name)
 
-        for i, frame in enumerate(reader):
-            data.append(self.exp.pipeline.run(frame[:, :, 0]).data)
-            self.diag_track.prog_track.setValue(i)
-            if i % 100 == 0:
-                self.app.processEvents()
+            for i, frame in enumerate(reader):
+                data.append(self.exp.pipeline.run(frame[:, :, 0]).data)
+                self.diag_track.prog_track.setValue(i)
+                if i % 100 == 0:
+                    self.app.processEvents()
 
-        self.diag_track.lbl_status.setText("Saving " + output_name)
-        df = pd.DataFrame.from_records(data, columns=data[0]._fields)
-        save_df(df, self.output_path, fileformat)
-        self.diag_track.lbl_status.setText("Completed " + output_name)
-        self.exp.wrap_up()
+            self.diag_track.lbl_status.setText("Saving " + output_name)
+            df = pd.DataFrame.from_records(data, columns=data[0]._fields)
+            save_df(df, self.output_path, fileformat)
+            self.diag_track.lbl_status.setText("Completed " + output_name)
+            self.exp.wrap_up()
+        finally:
+            close = getattr(reader, "close", None)
+            if close is not None:
+                close()
 
     def save_params(self):
         params = self.exp.pipeline.serialize_params()

@@ -23,6 +23,7 @@ class TrackingProcess(FrameProcess):
         finished_signal: Event = None,
         pipeline=None,
         processing_parameter_queue=None,
+        state_queue=None,
         output_queue=None,
         second_output_queue=None,
         recording_signal=None,
@@ -74,6 +75,7 @@ class TrackingProcess(FrameProcess):
         self.output_queue = output_queue  # queue for processing output (e.g., pos)
         self.second_output_queue = second_output_queue  # user defined optional second output queue, attention needs emptying
         self.processing_parameter_queue = processing_parameter_queue
+        self.state_queue = state_queue
 
         self.finished_signal = finished_signal
         self.gui_framerate = gui_framerate
@@ -136,6 +138,7 @@ class TrackingProcess(FrameProcess):
             # If a processing function is specified, apply it:
 
             new_messages, output = self.pipeline.run(frame)
+            self.publish_state()
             for msg in messages + new_messages:
                 self.message_queue.put(msg)
 
@@ -156,6 +159,29 @@ class TrackingProcess(FrameProcess):
             )
 
         return
+
+    def publish_state(self):
+        if self.state_queue is None:
+            return
+
+        for node in self.pipeline.node_dict.values():
+            background_image = getattr(node, "background_image", None)
+            if background_image is None or not getattr(node, "background_changed", False):
+                continue
+
+            state = {
+                "background_image": background_image.copy(),
+                "node_path": node.strpath,
+            }
+            while True:
+                try:
+                    self.state_queue.put_nowait(state)
+                    return
+                except Full:
+                    try:
+                        self.state_queue.get_nowait()
+                    except Empty:
+                        return
 
     def send_to_gui(self, frametime, frame):
         """Sends the current frame to the GUI queue at the appropriate framerate"""
