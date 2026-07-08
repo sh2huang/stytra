@@ -69,6 +69,21 @@ def get_video_reader(input_path):
             ) from exc
 
 
+def get_reader_length(reader):
+    length_methods = ("count_frames", "get_length")
+    for method_name in length_methods:
+        method = getattr(reader, method_name, None)
+        if method is None:
+            continue
+        try:
+            length = method()
+        except Exception:
+            continue
+        if length is not None and length > 0 and length != float("inf"):
+            return int(length)
+    return None
+
+
 class EmptyProtocol(Protocol):
     name = "Offline"
 
@@ -122,22 +137,30 @@ class OfflineToolbar(QToolBar):
 
             output_name = str(self.output_path) + "." + fileformat
             self.diag_track.show()
-            if hasattr(reader, "count_frames"):
-                l = reader.count_frames()
+            n_frames = get_reader_length(reader)
+            if n_frames is None:
+                self.diag_track.prog_track.setRange(0, 0)
             else:
-                l = reader.get_length()
-            self.diag_track.prog_track.setMaximum(l)
+                self.diag_track.prog_track.setRange(0, n_frames)
             self.diag_track.lbl_status.setText("Tracking to " + output_name)
 
             for i, frame in enumerate(reader):
                 data.append(self.exp.pipeline.run(frame[:, :, 0]).data)
-                self.diag_track.prog_track.setValue(i)
+                if n_frames is not None:
+                    self.diag_track.prog_track.setValue(i + 1)
                 if i % 100 == 0:
+                    if n_frames is None:
+                        self.diag_track.lbl_status.setText(
+                            "Tracking frame {} to {}".format(i + 1, output_name)
+                        )
                     self.app.processEvents()
 
             self.diag_track.lbl_status.setText("Saving " + output_name)
+            self.diag_track.prog_track.setRange(0, 1)
+            self.diag_track.prog_track.setValue(0)
             df = pd.DataFrame.from_records(data, columns=data[0]._fields)
             save_df(df, self.output_path, fileformat)
+            self.diag_track.prog_track.setValue(1)
             self.diag_track.lbl_status.setText("Completed " + output_name)
             self.exp.wrap_up()
         finally:
