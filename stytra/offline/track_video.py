@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (
     QApplication,
     QDialog,
     QPushButton,
+    QCheckBox,
     QComboBox,
     QGridLayout,
     QLabel,
@@ -20,53 +21,69 @@ from stytra.utilities import save_df
 import imageio
 import pandas as pd
 import json
+from types import MethodType
+from stytra.experiments import VisualExperiment
+from stytra.tracking.preprocessing import BackgroundSubtractor
 
 
-class OpenCVVideoReader:
-    """Small adapter matching the imageio reader API used by offline tracking."""
+OFFLINE_PROCESS_JOIN_TIMEOUT = 2.0
 
-    def __init__(self, input_path):
-        import cv2
 
-        self.cv2 = cv2
-        self.cap = cv2.VideoCapture(str(input_path))
-        if not self.cap.isOpened():
-            raise OSError("Could not open video file: {}".format(input_path))
+def clear_queue(queue):
+    if queue is None:
+        return
+    try:
+        queue.clear()
+    except AttributeError:
+        pass
 
-    def count_frames(self):
-        return int(self.cap.get(self.cv2.CAP_PROP_FRAME_COUNT))
 
-    def get_length(self):
-        return self.count_frames()
+def join_or_terminate(process, timeout=OFFLINE_PROCESS_JOIN_TIMEOUT):
+    if process is None:
+        return
+    try:
+        process.join(timeout)
+    except AssertionError:
+        return
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout)
 
-    def close(self):
-        self.cap.release()
 
-    def __iter__(self):
-        while True:
-            ok, frame = self.cap.read()
-            if not ok:
-                break
-            if frame.ndim == 3:
-                frame = self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2RGB)
-            yield frame
+def wrap_up_offline_experiment(exp):
+    exp.gui_timer.stop()
+    VisualExperiment.wrap_up(exp)
+
+    exp.camera.kill_event.set()
+    clear_queue(getattr(exp.camera, "frame_queue", None))
+
+    frame_dispatcher = getattr(exp, "frame_dispatcher", None)
+    clear_queue(getattr(frame_dispatcher, "gui_queue", None))
+    clear_queue(getattr(frame_dispatcher, "frame_copy_queue", None))
+
+    join_or_terminate(frame_dispatcher)
+    join_or_terminate(exp.camera)
+
+
+def install_offline_close_handler(window, app):
+    def close_event(self, event):
+        wrap_up_offline_experiment(self.experiment)
+        event.accept()
+        app.quit()
+
+    window.closeEvent = MethodType(close_event, window)
 
 
 def get_video_reader(input_path):
     try:
         return imageio.get_reader(str(input_path), "ffmpeg")
     except ImportError as exc:
-        try:
-            return OpenCVVideoReader(input_path)
-        except Exception as cv_exc:
-            raise ImportError(
-                "Could not open video with imageio's FFMPEG plugin or OpenCV. "
-                "OpenCV error: {}. "
-                "Install the missing conda dependency with:\n"
-                "C:\\Users\\huang\\AppData\\Local\\anaconda3\\condabin\\conda.bat "
-                "run -n stytra python -m pip install \"imageio[ffmpeg]\""
-                .format(cv_exc)
-            ) from exc
+        raise ImportError(
+            "Could not open video with imageio's FFMPEG plugin. "
+            "Install the missing conda dependency with:\n"
+            "C:\\Users\\huang\\AppData\\Local\\anaconda3\\condabin\\conda.bat "
+            "run -n stytra python -m pip install \"imageio[ffmpeg]\""
+        ) from exc
 
 
 def get_reader_length(reader):
@@ -84,6 +101,88 @@ def get_reader_length(reader):
     return None
 
 
+def valid_positive_float(value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    if value > 0 and value != float("inf"):
+        return value
+    return None
+
+
+def fps_from_frame_count(n_frames, duration):
+    duration = valid_positive_float(duration)
+    if n_frames is None or duration is None:
+        return None
+    return n_frames / duration
+
+
+def count_frames_and_secs(input_path):
+    try:
+        import imageio_ffmpeg
+    except ImportError:
+        return None, None
+
+    try:
+        return imageio_ffmpeg.count_frames_and_secs(str(input_path))
+    except Exception:
+        return None, None
+
+
+def select_fps(metadata_fps, counted_fps):
+    metadata_fps = valid_positive_float(metadata_fps)
+    counted_fps = valid_positive_float(counted_fps)
+    if metadata_fps is None:
+        return counted_fps or 30
+    if counted_fps is None:
+        return metadata_fps
+    if abs(metadata_fps - counted_fps) / metadata_fps > 0.001:
+        return counted_fps
+    return metadata_fps
+
+
+def get_video_metadata(reader, input_path, n_frames=None):
+    metadata = {}
+    get_meta_data = getattr(reader, "get_meta_data", None)
+    if get_meta_data is not None:
+        try:
+            metadata.update(get_meta_data())
+        except Exception:
+            pass
+
+    counted_fps = fps_from_frame_count(n_frames, metadata.get("duration"))
+    if counted_fps is None:
+        counted_frames, counted_secs = count_frames_and_secs(input_path)
+        counted_fps = fps_from_frame_count(counted_frames, counted_secs)
+
+    metadata["fps"] = select_fps(metadata.get("fps"), counted_fps)
+    return metadata
+
+
+def get_background_difference_node(pipeline):
+    for node in pipeline.node_dict.values():
+        if isinstance(node, BackgroundSubtractor):
+            return node
+    return None
+
+
+def background_difference_output_path(input_path):
+    return input_path.with_name(
+        input_path.stem + "_background_difference" + input_path.suffix
+    )
+
+
+def ffmpeg_bitrate_arg(bitrate):
+    if bitrate is None:
+        return None
+    if isinstance(bitrate, str):
+        return bitrate
+    if bitrate <= 0:
+        return None
+    return "{}k".format(max(1, int(round(bitrate / 1000))))
+
+
 class EmptyProtocol(Protocol):
     name = "Offline"
 
@@ -92,8 +191,8 @@ class EmptyProtocol(Protocol):
 
 
 class TrackingDialog(QDialog):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.setLayout(QVBoxLayout())
         self.setWindowTitle("Tracking")
         self.prog_track = QProgressBar()
@@ -114,14 +213,19 @@ class OfflineToolbar(QToolBar):
 
         self.cmb_fmt = QComboBox()
         self.cmb_fmt.addItems(["csv", "feather", "hdf5"])
+        self.chk_save_bgdiff = QCheckBox("Save background difference video")
+        self.chk_save_bgdiff.setEnabled(
+            get_background_difference_node(self.exp.pipeline) is not None
+        )
 
         self.addAction("Track video", self.track)
+        self.addWidget(self.chk_save_bgdiff)
         self.addAction("Output format")
         self.addWidget(self.cmb_fmt)
         self.addSeparator()
         self.addAction("Save tracking params", self.save_params)
 
-        self.diag_track = TrackingDialog()
+        self.diag_track = TrackingDialog(self.exp.window_main)
 
     def track(self):
         fileformat = self.cmb_fmt.currentText()
@@ -131,6 +235,10 @@ class OfflineToolbar(QToolBar):
         if sync_background is not None and sync_background():
             self.diag_track.lbl_status.setText("Using current preview background")
         reader = get_video_reader(self.input_path)
+        bgdiff_node = get_background_difference_node(self.exp.pipeline)
+        save_bgdiff_video = self.chk_save_bgdiff.isChecked() and bgdiff_node is not None
+        bgdiff_writer = None
+        bgdiff_output_name = str(background_difference_output_path(self.input_path))
         data = []
         try:
             self.exp.window_main.stream_plot.toggle_freeze()
@@ -142,10 +250,30 @@ class OfflineToolbar(QToolBar):
                 self.diag_track.prog_track.setRange(0, 0)
             else:
                 self.diag_track.prog_track.setRange(0, n_frames)
+            video_metadata = get_video_metadata(reader, self.input_path, n_frames)
             self.diag_track.lbl_status.setText("Tracking to " + output_name)
+            if save_bgdiff_video:
+                self.diag_track.lbl_status.setText(
+                    "Tracking to {} and {}".format(output_name, bgdiff_output_name)
+                )
 
             for i, frame in enumerate(reader):
                 data.append(self.exp.pipeline.run(frame[:, :, 0]).data)
+                if save_bgdiff_video:
+                    if bgdiff_writer is None:
+                        writer_kwargs = dict(
+                            fps=video_metadata["fps"],
+                            quality=None,
+                            macro_block_size=None,
+                            ffmpeg_params=["-pix_fmt", "yuv420p"],
+                        )
+                        bitrate = ffmpeg_bitrate_arg(video_metadata.get("bitrate"))
+                        if bitrate is not None:
+                            writer_kwargs["bitrate"] = bitrate
+                        bgdiff_writer = imageio.get_writer(
+                            bgdiff_output_name, "ffmpeg", **writer_kwargs
+                        )
+                    bgdiff_writer.append_data(bgdiff_node.last_output_image)
                 if n_frames is not None:
                     self.diag_track.prog_track.setValue(i + 1)
                 if i % 100 == 0:
@@ -155,15 +283,25 @@ class OfflineToolbar(QToolBar):
                         )
                     self.app.processEvents()
 
+            if bgdiff_writer is not None:
+                self.diag_track.lbl_status.setText("Finalizing " + bgdiff_output_name)
+                self.app.processEvents()
+                bgdiff_writer.close()
+                bgdiff_writer = None
+
             self.diag_track.lbl_status.setText("Saving " + output_name)
             self.diag_track.prog_track.setRange(0, 1)
             self.diag_track.prog_track.setValue(0)
             df = pd.DataFrame.from_records(data, columns=data[0]._fields)
             save_df(df, self.output_path, fileformat)
             self.diag_track.prog_track.setValue(1)
-            self.diag_track.lbl_status.setText("Completed " + output_name)
-            self.exp.wrap_up()
+            completed_message = "Completed " + output_name
+            if save_bgdiff_video:
+                completed_message += " and " + bgdiff_output_name
+            self.diag_track.lbl_status.setText(completed_message)
         finally:
+            if bgdiff_writer is not None:
+                bgdiff_writer.close()
             close = getattr(reader, "close", None)
             if close is not None:
                 close()
@@ -223,6 +361,7 @@ class StytraLoader(QDialog):
             camera=dict(video_file=self.filename),
             tracking=dict(method=self.cmb_tracking.currentText()),
             exec=False,
+            offline=True,
             display=dict(gl_display=False),
         )
 
@@ -236,8 +375,8 @@ class StytraLoader(QDialog):
         self.stytra.exp.window_main.toolbar_control.hide()
         self.stytra.exp.window_main.addToolBar(offline_toolbar)
         offline_toolbar.show()
+        install_offline_close_handler(self.stytra.exp.window_main, self.app)
 
-        self.stytra.exp.window_display.hide()
         self.close()
 
 

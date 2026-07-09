@@ -102,13 +102,16 @@ def absdif(xf, y):
 class BackgroundSubtractor(ImageToImageNode):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, name="bgsub", **kwargs)
+        self.diagnostic_image_options = ["background"]
         self.background_image = None
         self.background_changed = False
+        self.last_output_image = None
         self.i = 0
 
     def reset(self):
         self.background_image = None
         self.background_changed = False
+        self.last_output_image = None
 
     def _process(
         self,
@@ -132,6 +135,9 @@ class BackgroundSubtractor(ImageToImageNode):
         self.i = (self.i + 1) % learn_every
 
         if only_darker:
-            return NodeOutput(messages, negdif(self.background_image, im))
+            self.last_output_image = negdif(self.background_image, im)
         else:
-            return NodeOutput(messages, absdif(self.background_image, im))
+            self.last_output_image = absdif(self.background_image, im)
+        if self.set_diagnostic == "background":
+            self.diagnostic_image = self.background_image.astype(np.uint8)
+        return NodeOutput(messages, self.last_output_image)
