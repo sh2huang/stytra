@@ -275,6 +275,9 @@ class ProjectorAndCalibrationWidget(QWidget):
         self.layout_calibrate = QHBoxLayout()
         self.button_show_calib = QPushButton("Show calibration")
         self.button_show_calib.clicked.connect(self.toggle_calibration)
+        self.button_show_fov = QPushButton("Show FOV")
+        self.button_show_fov.setCheckable(True)
+        self.button_show_fov.toggled.connect(self.toggle_fov_calibration)
 
         if isinstance(experiment.calibrator, CircleCalibrator):
             self.button_calibrate = QPushButton("Calibrate")
@@ -284,6 +287,7 @@ class ProjectorAndCalibrationWidget(QWidget):
         self.label_calibrate = QLabel(self.calibrator.length_to_measure)
         self.label_calibrate.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.layout_calibrate.addWidget(self.button_show_calib)
+        self.layout_calibrate.addWidget(self.button_show_fov)
         self.layout_calibrate.addWidget(self.label_calibrate)
 
         self.calibrator_len_spin = ControlSpin(self.calibrator, "length_mm")
@@ -346,6 +350,13 @@ class ProjectorAndCalibrationWidget(QWidget):
             self.button_show_calib.setText("Show calibration")
         self.sig_calibrating.emit()
         self.experiment.window_display.widget_display.update()
+
+    def toggle_fov_calibration(self, enabled):
+        if enabled:
+            self.button_show_fov.setText("Hide FOV")
+        else:
+            self.button_show_fov.setText("Show FOV")
+        self.experiment.window_display.widget_display.set_fov_calibration(enabled)
 
     def calibrate(self):
         """ """

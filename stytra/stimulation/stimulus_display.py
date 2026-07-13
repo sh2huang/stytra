@@ -3,7 +3,7 @@ from datetime import datetime
 import numpy as np
 import qimage2ndarray
 from PyQt5.QtCore import QPointF, QRectF, Qt, QSize
-from PyQt5.QtGui import QPainter, QBrush, QColor, QTransform
+from PyQt5.QtGui import QPainter, QBrush, QColor, QPen, QTransform
 from PyQt5.QtWidgets import (
     QOpenGLWidget,
     QWidget,
@@ -169,6 +169,7 @@ class StimDisplayWidget:
 
         self.img = None
         self.calibrating = False
+        self.fov_calibration_enabled = False
         self.dims = None
 
         # storing of displayed frames
@@ -223,7 +224,55 @@ class StimDisplayWidget:
             if self.calibrator.enabled:
                 self.calibrator.paint_calibration_pattern(p, h, w)
 
+        if self.fov_calibration_enabled:
+            self.paint_fov_calibration_pattern(p, h, w)
+
         p.end()
+
+    def set_fov_calibration(self, enabled):
+        self.fov_calibration_enabled = enabled
+        self.update()
+
+    def paint_fov_calibration_pattern(self, p, h, w):
+        """Draw a field-of-view frame and center marker on the stimulus window."""
+        cx = float(w) / 2.0
+        cy = float(h) / 2.0
+
+        p.save()
+        p.setRenderHint(QPainter.Antialiasing, False)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(QColor(0, 0, 0)))
+        p.drawRect(QRectF(0.0, 0.0, float(w), float(h)))
+
+        p.setBrush(QBrush(QColor(0, 0, 0, 0)))
+        p.setPen(QPen(QColor(255, 255, 255), 1))
+        p.drawRect(QRectF(0.5, 0.5, float(w) - 1.0, float(h) - 1.0))
+        p.drawLine(QPointF(cx, 0.0), QPointF(cx, float(h)))
+        p.drawLine(QPointF(0.0, cy), QPointF(float(w), cy))
+
+        p.setPen(QPen(QColor(255, 255, 255), 1))
+        p.drawLine(QPointF(cx - 20.0, cy), QPointF(cx + 20.0, cy))
+        p.drawLine(QPointF(cx, cy - 20.0), QPointF(cx, cy + 20.0))
+
+        info_lines = [
+            "size: {} x {} px".format(w, h),
+            "center: ({:.1f}, {:.1f}) px".format(cx, cy),
+        ]
+        font_metrics = p.fontMetrics()
+        text_width = max(font_metrics.width(line) for line in info_lines)
+        line_height = font_metrics.height()
+        box_rect = QRectF(8.0, 8.0, float(text_width + 16), float(line_height * 2 + 12))
+
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(QColor(0, 0, 0, 180)))
+        p.drawRect(box_rect)
+
+        p.setPen(QPen(QColor(255, 255, 255), 1))
+        for i, line in enumerate(info_lines):
+            y = 8.0 + 8.0 + float(font_metrics.ascent()) + i * line_height
+            p.drawText(QPointF(16.0, y), line)
+
+        p.restore()
 
     def display_stimulus(self):
         """Function called by the protocol_runner timestep timer that update
@@ -351,5 +400,8 @@ class StimDisplayWidgetConditional(StimDisplayWidget):
             if self.calibrator is not None:
                 if self.calibrator.enabled:
                     self.calibrator.paint_calibration_pattern(p, h, w)
+
+            if self.fov_calibration_enabled:
+                self.paint_fov_calibration_pattern(p, h, w)
 
         p.end()
