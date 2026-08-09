@@ -566,6 +566,7 @@ class PaintGratingStimulus(BackgroundStimulus):
         )
 
     def draw_block(self, p, point, w, h):
+        #print(w,h)
         """Function for drawing the gratings programmatically."""
         p.setPen(Qt.NoPen)
         p.setRenderHint(QPainter.Antialiasing)
