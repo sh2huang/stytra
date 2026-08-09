@@ -1,7 +1,7 @@
 import datetime
 from copy import deepcopy
 
-from PyQt5.QtCore import pyqtSignal, QTimer, QObject
+from PyQt5.QtCore import pyqtSignal, QTimer, QObject, Qt
 from stytra.stimulation.stimuli import Pause, DynamicStimulus
 from stytra.collectors.accumulators import DynamicLog, FramerateAccumulator
 from stytra.utilities import FramerateRecorder
@@ -82,6 +82,10 @@ class ProtocolRunner(QObject):
         self.t = 0
 
         self.timer = QTimer()
+        # Visual stimulation needs millisecond-level scheduling (for example,
+        # a 16 ms interval for a 60 Hz projector).  The default coarse timer
+        # may add several milliseconds of jitter on Windows.
+        self.timer.setTimerType(Qt.PreciseTimer)
         self.timer.timeout.connect(self.timestep)  # connect timer to update fun
         self.timer.setSingleShot(False)
 
