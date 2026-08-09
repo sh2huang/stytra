@@ -2,6 +2,7 @@ from stytra.collectors.namedtuplequeue import NamedTupleQueue
 from multiprocessing import Process
 from collections import namedtuple
 from time import sleep
+from queue import Queue as ThreadQueue
 
 
 class TupProc(Process):
@@ -31,3 +32,15 @@ def test_ntqueue():
     tp.join()
     _, tup2 = tp.q.get()
     assert tup2 == t(2, 2, 3)
+
+
+def test_ntqueue_get_nowait():
+    tuple_type = namedtuple("Result", "a b")
+    q = NamedTupleQueue.__new__(NamedTupleQueue)
+    q.q = ThreadQueue()
+    q.tuple_type = None
+
+    q.put(None, tuple_type(1, 2))
+
+    _, result = q.get_nowait()
+    assert result == tuple_type(1, 2)

@@ -309,6 +309,10 @@ class TrackingExperiment(CameraVisualExperiment):
         self.second_output_queue = second_output_queue
         self.tracking_output_queue = NamedTupleQueue()
         self.finished_sig = Event()
+        # This is needed while super().__init__ creates the tracking process.
+        self.tracking_every_n_frame = tracking.get(
+            "tracking_every_n_frame", 1
+        )
 
         self.pipeline_cls = (
             pipeline_dict.get(tracking["method"], None)
@@ -335,6 +339,7 @@ class TrackingExperiment(CameraVisualExperiment):
             experiment=self,
             data_queue=self.tracking_output_queue,
             monitored_headers=self.pipeline.headers_to_plot,
+            max_items_per_update=tracking.get("max_items_per_update", 16),
         )
         self.acc_tracking.sig_acc_init.connect(self.refresh_plots)
 
@@ -392,6 +397,7 @@ class TrackingExperiment(CameraVisualExperiment):
             output_queue=self.tracking_output_queue,
             second_output_queue=self.second_output_queue,
             recording_signal=recording_event,
+            tracking_every_n_frame=self.tracking_every_n_frame,
             gui_framerate=20,
         )
 

@@ -84,7 +84,7 @@ class StatusMessageDisplay(QWidget):
         for queue in self.queues:
             while True:
                 try:
-                    msg = queue.get(timeout=0.001)
+                    msg = queue.get_nowait()
                     self.addMessage(msg)
                 except Empty:
                     break

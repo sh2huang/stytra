@@ -15,11 +15,21 @@ class NamedTupleQueue:
             )
         self.q.put((t, tuple(obj)), block=block, timeout=timeout)
 
-    def get(self, block=True, timeout=-1):
-        t, el = self.q.get(block=block, timeout=timeout)
+    def _get(self, block=True, timeout=None):
+        if not block:
+            return self.q.get_nowait()
+        if timeout is None:
+            return self.q.get()
+        return self.q.get(timeout=timeout)
+
+    def get(self, block=True, timeout=None):
+        t, el = self._get(block=block, timeout=timeout)
         if self.tuple_type is None or el[0] == "_fieldnames":
             self.tuple_type = namedtuple("t", el[1:])
-            t, obtained = self.q.get(block=block, timeout=timeout)
+            t, obtained = self._get(block=block, timeout=timeout)
             return t, self.tuple_type(*obtained)
         else:
             return t, self.tuple_type(*el)
+
+    def get_nowait(self):
+        return self.get(block=False)

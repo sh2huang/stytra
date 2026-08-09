@@ -17,6 +17,7 @@ from lightparam.gui import ControlSpin
 
 import cv2
 import logging
+from queue import Empty
 
 
 class ProjectorViewer(pg.GraphicsLayoutWidget):
@@ -336,10 +337,21 @@ class ProjectorAndCalibrationWidget(QWidget):
         self.calibrator.set_pixel_scale(size[0], size[1])
         self.calibrator_len_spin.update_display()
 
+    def _get_calibration_frame(self):
+        try:
+            # arrayqueues exposes non-blocking reads through ``block=False``.
+            _, frame = self.experiment.frame_dispatcher.gui_queue.get(block=False)
+            return frame
+        except Empty:
+            return getattr(self.experiment.window_main.camera_display, "current_image", None)
+
     def toggle_calibration(self):
         """ """
         if isinstance(self.calibrator, CircleCalibrator):
-            _, frame = self.experiment.frame_dispatcher.gui_queue.get()
+            frame = self._get_calibration_frame()
+            if frame is None:
+                logging.warning("Cannot calibrate before a camera frame is available")
+                return
             self.widget_proj_viewer.display_calibration_pattern(
                 self.calibrator, frame.shape, frame
             )
@@ -360,7 +372,10 @@ class ProjectorAndCalibrationWidget(QWidget):
 
     def calibrate(self):
         """ """
-        _, frame = self.experiment.frame_dispatcher.gui_queue.get()
+        frame = self._get_calibration_frame()
+        if frame is None:
+            logging.warning("Cannot calibrate before a camera frame is available")
+            return
 
         try:
             self.calibrator.find_transform_matrix(frame)

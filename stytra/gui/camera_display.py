@@ -141,35 +141,16 @@ class CameraViewWidget(QWidget):
         self.param_widget = None
 
     def retrieve_image(self):
-        """Update displayed frame while emptying frame source queue. This is done
-        through a while loop that takes all available frames at every update.
+        """Drain available frames without waiting and display the newest one."""
 
-        # TODO fix this somehow?
-
-        **Important!** if the input queue is too fast this will produce an
-        infinite loop and block the interface!
-
-        Parameters
-        ----------
-
-        Returns
-        -------
-
-        """
-
-        first = True
+        # Empty the queue without waiting and keep only its newest frame.
         while True:
             try:
-                # In this way, the frame displayed is actually the most
-                # recent one added to the queue, as a queue is FILO:
-                if first:
-                    qr = self.frame_queue.get(timeout=0.0001)
-                    self.current_image = qr[-1]
-                    self.current_frame_time = qr[0]
-                    # first = False
-                else:
-                    # Else, get to free the queue:
-                    _, _ = self.frame_queue.get(timeout=0.001)
+                # arrayqueues calls this get(block=False), rather than
+                # exposing a get_nowait() method.
+                queued_frame = self.frame_queue.get(block=False)
+                self.current_frame_time = queued_frame[0]
+                self.current_image = queued_frame[-1]
             except Empty:
                 break
 

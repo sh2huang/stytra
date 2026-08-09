@@ -249,7 +249,7 @@ class QueueDataAccumulator(DataFrameAccumulator):
 
     """
 
-    def __init__(self, data_queue, **kwargs):
+    def __init__(self, data_queue, max_items_per_update=16, **kwargs):
         """ """
         super().__init__(**kwargs)
 
@@ -257,13 +257,18 @@ class QueueDataAccumulator(DataFrameAccumulator):
         # only time differences in milliseconds in the list (faster)
         self.starting_time = None
         self.data_queue = data_queue
+        self.max_items_per_update = int(max_items_per_update)
+        if self.max_items_per_update <= 0:
+            raise ValueError("max_items_per_update must be greater than zero")
 
     def update_list(self):
-        """Upon calling put all available data into a list."""
-        while True:
+        """Move a bounded batch of queued data into the accumulator."""
+        n_items = 0
+        # Bound work per GUI tick so tracking data cannot starve stimulus updates.
+        while n_items < self.max_items_per_update:
             try:
-                # Get data from queue:
-                t, data = self.data_queue.get(timeout=0.001)
+                # Never wait inside the Qt GUI thread.
+                t, data = self.data_queue.get_nowait()
                 newtype = False
                 if len(self.stored_data) == 0 or type(data) != type(
                     self.stored_data[-1]
@@ -277,14 +282,17 @@ class QueueDataAccumulator(DataFrameAccumulator):
                 # append:
                 self.times.append(t_s)
                 self.stored_data.append(data)
-
-                self.trim_data()
+                n_items += 1
 
                 # if the data type changed, emit a signal
                 if newtype:
                     self.sig_acc_init.emit()
             except Empty:
                 break
+
+        if n_items:
+            self.trim_data()
+        return n_items
 
 
 class FramerateAccumulator(Accumulator):
@@ -316,8 +324,8 @@ class FramerateQueueAccumulator(FramerateAccumulator):
     def update_list(self):
         while True:
             try:
-                # Get data from queue:
-                t, fps = self.queue.get(timeout=0.001)
+                # Never wait inside the Qt GUI thread.
+                t, fps = self.queue.get_nowait()
                 # Time in ms (for having np and not datetime objects)
                 t_s = (t - self.exp.t0).total_seconds()
 

@@ -1,5 +1,5 @@
 from queue import Empty, Full
-from multiprocessing import Event, Value
+from multiprocessing import Event
 
 from stytra.utilities import FrameProcess
 from arrayqueues.shared_arrays import TimestampedArrayQueue
@@ -27,6 +27,7 @@ class TrackingProcess(FrameProcess):
         output_queue=None,
         second_output_queue=None,
         recording_signal=None,
+        tracking_every_n_frame=1,
         gui_framerate=30,
         max_mb_queue=100,
         **kwargs
@@ -47,6 +48,9 @@ class TrackingProcess(FrameProcess):
         output_queue:
             tracking output queue
         recording_signal: bool (false)
+        tracking_every_n_frame: int
+            run tracking once every N camera frames. Recording still receives
+            every frame read from the camera queue.
 
         processing_counter
         gui_framerate: int
@@ -78,6 +82,9 @@ class TrackingProcess(FrameProcess):
         self.state_queue = state_queue
 
         self.finished_signal = finished_signal
+        self.tracking_every_n_frame = int(tracking_every_n_frame)
+        if self.tracking_every_n_frame < 1:
+            raise ValueError("tracking_every_n_frame must be at least 1")
         self.gui_framerate = gui_framerate
 
         self.pipeline_cls = pipeline
@@ -127,19 +134,23 @@ class TrackingProcess(FrameProcess):
             except Empty:
                 continue
 
-            messages = []
-            # If we are copying the frames to another queue (e.g. for video recording), do it here
+            # Copy every received camera frame before applying tracking decimation.
             if self.recording_signal is not None and self.recording_signal.is_set():
                 try:
                     self.frame_copy_queue.put(frame.copy(), timestamp=time)
-                except:
-                    messages.append("W:Dropping frames from recording")
+                except Exception:
+                    self.message_queue.put("W:Dropping frames from recording")
+
+            # Record first, then skip tracking frames. This keeps the camera
+            # recording complete while reducing tracking work.
+            if frame_idx % self.tracking_every_n_frame:
+                continue
 
             # If a processing function is specified, apply it:
 
             new_messages, output = self.pipeline.run(frame)
             self.publish_state()
-            for msg in messages + new_messages:
+            for msg in new_messages:
                 self.message_queue.put(msg)
 
             self.output_queue.put(time, output)

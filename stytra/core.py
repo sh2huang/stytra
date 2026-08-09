@@ -82,6 +82,9 @@ class Stytra:
                "prefilter" or "bgsub"
             method: str
                 one of "tail", "eyes" or "fish"
+            tracking_every_n_frame: int, optional
+                run tracking once every N camera frames. Camera acquisition
+                and recording continue for every frame.
             estimator: str or class
                 for closed-loop experiments: either "vigor" for embedded experiments
                     or "position" for freely-swimming ones. A custom estimator can be supplied.
