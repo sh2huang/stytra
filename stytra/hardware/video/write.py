@@ -59,6 +59,10 @@ class VideoWriter(FrameProcess):
         self._times = []
         self._log_format = log_format
 
+    @staticmethod
+    def _filename_base_as_str(filename) -> str:
+        return str(filename)
+
     def run(self) -> None:
         """ "
         Runs the recording process and listens for events.
@@ -160,7 +164,7 @@ class VideoWriter(FrameProcess):
         """
         save_df(
             pd.DataFrame(self._times, columns=["t"]),
-            Path(str(filename) + "video_times"),
+            Path(self._filename_base_as_str(filename) + "video_times"),
             self._log_format,
         )
 
@@ -215,7 +219,10 @@ class H5VideoWriter(VideoWriter):
         Writes the frames to a hdf5 file.
         """
         super()._complete(filename)
-        fl.save(filename + "video.hdf5", np.array(self._frames, dtype=np.uint8))
+        fl.save(
+            self._filename_base_as_str(filename) + "video.hdf5",
+            np.array(self._frames, dtype=np.uint8),
+        )
 
 
 class StreamingVideoWriter(VideoWriter):
@@ -265,7 +272,7 @@ class StreamingVideoWriter(VideoWriter):
         filename
             a unique identifier to be used in the filename for saving the video file.
         """
-        return str(filename) + "video." + self._extension
+        return self._filename_base_as_str(filename) + "video." + self._extension
 
     def _configure(self, shape: np.ndarray.shape) -> None:
         """
