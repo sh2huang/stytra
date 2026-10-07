@@ -109,6 +109,9 @@ class StimulusDisplayOnMainWindow(QWidget):
             protocol_runner=self.experiment.protocol_runner,
             record_stim_framerate=None,
         )
+        self.widget_display.idle_background_color = (
+            self.experiment.window_display.widget_display.idle_background_color
+        )
 
         self.layout_inner = QVBoxLayout()
         self.layout_inner.addWidget(self.widget_display)
