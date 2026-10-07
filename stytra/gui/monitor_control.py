@@ -282,12 +282,12 @@ class ProjectorAndCalibrationWidget(QWidget):
         self.button_show_fov.toggled.connect(self.toggle_fov_calibration)
 
         self.checkbox_bright_idle = QCheckBox("Bright idle BG (128)")
-        self.checkbox_bright_idle.setChecked(False)
         self.checkbox_bright_idle.setToolTip(
             "Use RGB (128, 128, 128) before and after the protocol; "
             "leave unchecked for black."
         )
         self.checkbox_bright_idle.toggled.connect(self.toggle_idle_background)
+        self.checkbox_bright_idle.setChecked(True)
 
         if isinstance(experiment.calibrator, CircleCalibrator):
             self.button_calibrate = QPushButton("Calibrate")
