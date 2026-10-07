@@ -286,8 +286,10 @@ class ProjectorAndCalibrationWidget(QWidget):
             "Use RGB (128, 128, 128) before and after the protocol; "
             "leave unchecked for black."
         )
+        self.checkbox_bright_idle.setChecked(
+            bool(self.experiment.display_config.get("idle_background_bright", True))
+        )
         self.checkbox_bright_idle.toggled.connect(self.toggle_idle_background)
-        self.checkbox_bright_idle.setChecked(True)
 
         if isinstance(experiment.calibrator, CircleCalibrator):
             self.button_calibrate = QPushButton("Calibrate")
@@ -381,7 +383,9 @@ class ProjectorAndCalibrationWidget(QWidget):
         self.experiment.window_display.widget_display.set_fov_calibration(enabled)
 
     def toggle_idle_background(self, enabled):
-        """Switch idle projector background between black and RGB 128."""
+        """Switch idle projector background and persist the choice."""
+        enabled = bool(enabled)
+        self.experiment.display_config["idle_background_bright"] = enabled
         self.experiment.window_display.widget_display.set_idle_background(enabled)
 
         # Keep the optional stimulus preview consistent with the projector.
@@ -389,6 +393,8 @@ class ProjectorAndCalibrationWidget(QWidget):
         stimulus_display = getattr(main_window, "stimulus_display", None)
         if stimulus_display is not None:
             stimulus_display.widget_display.set_idle_background(enabled)
+
+        self.experiment.save_idle_background_setup()
 
     def calibrate(self):
         """ """
