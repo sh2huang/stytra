@@ -48,6 +48,7 @@ class StimulusDisplayWindow(ParametrizedWidget):
         calibrator,
         record_stim_framerate=None,
         gl=False,
+        idle_background_bright=True,
         **kwargs
     ):
         """
@@ -79,6 +80,7 @@ class StimulusDisplayWindow(ParametrizedWidget):
             record_stim_framerate=record_stim_framerate,
         )
         self.widget_display.setMaximumSize(2000, 2000)
+        self.widget_display.set_idle_background(idle_background_bright)
 
         self.pos = Param((0, 0))
         self.size = Param((400, 400))
