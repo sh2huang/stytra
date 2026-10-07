@@ -170,6 +170,7 @@ class StimDisplayWidget:
         self.img = None
         self.calibrating = False
         self.fov_calibration_enabled = False
+        self.idle_background_color = (0, 0, 0)
         self.dims = None
 
         # storing of displayed frames
@@ -181,6 +182,10 @@ class StimDisplayWidget:
 
         # Connect protocol_runner timer to stimulus updating function:
         self.protocol_runner.sig_timestep.connect(self.display_stimulus)
+        # Ensure the projector is repainted immediately after a normal finish
+        # or a manual stop, so it returns to the selected idle background.
+        self.protocol_runner.sig_protocol_finished.connect(self.update)
+        self.protocol_runner.sig_protocol_interrupted.connect(self.update)
 
         self.k = 0
         self.starting_time = None
@@ -215,6 +220,7 @@ class StimDisplayWidget:
                 except AttributeError:
                     pass
             else:
+                p.setBrush(QBrush(QColor(*self.idle_background_color)))
                 p.drawRect(QRectF(-1.0, -1.0, float(w) + 2.0, float(h) + 2.0))
                 p.setRenderHint(QPainter.SmoothPixmapTransform, 1)
                 if self.img is not None:
@@ -231,6 +237,12 @@ class StimDisplayWidget:
 
     def set_fov_calibration(self, enabled):
         self.fov_calibration_enabled = enabled
+        self.update()
+
+    def set_idle_background(self, bright):
+        """Set the background shown while no protocol is running."""
+        level = 128 if bright else 0
+        self.idle_background_color = (level, level, level)
         self.update()
 
     def paint_fov_calibration_pattern(self, p, h, w):
@@ -392,6 +404,7 @@ class StimDisplayWidgetConditional(StimDisplayWidget):
                     except AttributeError:
                         pass
                 else:
+                    p.setBrush(QBrush(QColor(*self.idle_background_color)))
                     p.drawRect(QRectF(-1.0, -1.0, float(w) + 2.0, float(h) + 2.0))
                     p.setRenderHint(QPainter.SmoothPixmapTransform, 1)
                     if self.img is not None:
