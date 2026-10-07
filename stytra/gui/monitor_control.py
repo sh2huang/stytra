@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QPushButton,
     QSpinBox,
+    QCheckBox,
 )
 
 import numpy as np
@@ -280,6 +281,14 @@ class ProjectorAndCalibrationWidget(QWidget):
         self.button_show_fov.setCheckable(True)
         self.button_show_fov.toggled.connect(self.toggle_fov_calibration)
 
+        self.checkbox_bright_idle = QCheckBox("Bright idle BG (128)")
+        self.checkbox_bright_idle.setChecked(False)
+        self.checkbox_bright_idle.setToolTip(
+            "Use RGB (128, 128, 128) before and after the protocol; "
+            "leave unchecked for black."
+        )
+        self.checkbox_bright_idle.toggled.connect(self.toggle_idle_background)
+
         if isinstance(experiment.calibrator, CircleCalibrator):
             self.button_calibrate = QPushButton("Calibrate")
             self.button_calibrate.clicked.connect(self.calibrate)
@@ -289,6 +298,7 @@ class ProjectorAndCalibrationWidget(QWidget):
         self.label_calibrate.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.layout_calibrate.addWidget(self.button_show_calib)
         self.layout_calibrate.addWidget(self.button_show_fov)
+        self.layout_calibrate.addWidget(self.checkbox_bright_idle)
         self.layout_calibrate.addWidget(self.label_calibrate)
 
         self.calibrator_len_spin = ControlSpin(self.calibrator, "length_mm")
@@ -369,6 +379,16 @@ class ProjectorAndCalibrationWidget(QWidget):
         else:
             self.button_show_fov.setText("Show FOV")
         self.experiment.window_display.widget_display.set_fov_calibration(enabled)
+
+    def toggle_idle_background(self, enabled):
+        """Switch idle projector background between black and RGB 128."""
+        self.experiment.window_display.widget_display.set_idle_background(enabled)
+
+        # Keep the optional stimulus preview consistent with the projector.
+        main_window = getattr(self.experiment, "window_main", None)
+        stimulus_display = getattr(main_window, "stimulus_display", None)
+        if stimulus_display is not None:
+            stimulus_display.widget_display.set_idle_background(enabled)
 
     def calibrate(self):
         """ """
