@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import traceback
 import numpy as np
@@ -9,6 +10,7 @@ import sys
 import types
 import imageio
 from importlib.metadata import PackageNotFoundError, version as distribution_version
+from pathlib import Path
 
 from PyQt5.QtCore import QObject, QTimer, pyqtSignal, QByteArray
 
@@ -102,6 +104,7 @@ class Experiment(QObject):
 
         self.app = app
         self.protocol = protocol
+        self.instance_number = instance_number
 
         self.arduino_config = arduino_config
         self.offline = offline
@@ -203,6 +206,52 @@ class Experiment(QObject):
             self.protocol_runner.dynamic_log.reset()
 
         self.protocol_runner.framerate_acc.reset()
+
+    def save_idle_background_setup(self):
+        """Persist the idle-background checkbox in stytra_setup_config.json."""
+        if self.instance_number >= 0:
+            filename = "stytra_setup_config_{}.json".format(self.instance_number)
+        else:
+            filename = "stytra_setup_config.json"
+
+        setup_path = Path.home() / filename
+        if setup_path.is_file():
+            try:
+                with open(str(setup_path), "r") as f:
+                    config = json.load(f)
+            except (OSError, ValueError) as exc:
+                self.logger.warning(
+                    "Could not update %s: %s", str(setup_path), str(exc)
+                )
+                return False
+        else:
+            config = {}
+
+        display_config = config.get("display", {})
+        if not isinstance(display_config, dict):
+            display_config = {}
+        display_config["idle_background_bright"] = bool(
+            self.display_config.get("idle_background_bright", True)
+        )
+        config["display"] = display_config
+
+        temp_path = Path(str(setup_path) + ".tmp")
+        try:
+            with open(str(temp_path), "w") as f:
+                json.dump(config, f, indent=2)
+            os.replace(str(temp_path), str(setup_path))
+        except OSError as exc:
+            self.logger.warning(
+                "Could not update %s: %s", str(setup_path), str(exc)
+            )
+            try:
+                if temp_path.exists():
+                    temp_path.unlink()
+            except OSError:
+                pass
+            return False
+
+        return True
 
     def start_experiment(self):
         """Start the experiment creating GUI and initialising metadata.
@@ -445,9 +494,14 @@ class VisualExperiment(Experiment):
         self.dc.add(self.calibrator)
 
         if display is None:
-            self.display_config = dict(full_screen=False, gl=True)
+            self.display_config = dict(
+                full_screen=False,
+                gl=True,
+                idle_background_bright=True,
+            )
         else:
-            self.display_config = display
+            self.display_config = dict(display)
+            self.display_config.setdefault("idle_background_bright", True)
             target_fps = self.display_config.get("framerate", 0)
             if target_fps > 0:
                 self.protocol_runner.target_dt = 1000 // target_fps
@@ -457,6 +511,9 @@ class VisualExperiment(Experiment):
                 self.calibrator,
                 gl=self.display_config.get("gl", True),
                 record_stim_framerate=record_stim_framerate,
+                idle_background_bright=self.display_config.get(
+                    "idle_background_bright", True
+                ),
             )
 
         self.display_framerate_acc = None
