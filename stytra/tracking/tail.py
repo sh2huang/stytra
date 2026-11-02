@@ -47,7 +47,7 @@ class CentroidTrackingMethod(TailTrackingMethod):
         time_filter_weight: Param(0.0, (0.0, 1.0)),
         n_output_segments: Param(9, (1, 30)),
         reset_zero: Param(False),
-        window_size: Param(7, (1, 15)),
+        window_size: Param(20, (1, 50)),
         **extraparams
     ):
         """Finds the tail for an embedded fish, given the starting point and

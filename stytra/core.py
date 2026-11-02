@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import signal
 
 from stytra.experiments import VisualExperiment
 from stytra.experiments.tracking_experiments import (
@@ -11,7 +12,7 @@ from stytra.utilities import recursive_update
 # imports for easy experiment building
 from stytra.stimulation import Protocol
 
-from PyQt5.QtCore import QSize, Qt
+from PyQt5.QtCore import QSize, Qt, QTimer
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon
 
@@ -197,4 +198,12 @@ class Stytra:
         self.exp.start_experiment()
 
         if exec:
-            app.exec_()
+            def stop_from_console(signum, frame):
+                # Let Qt close the window through the existing cleanup path.
+                QTimer.singleShot(0, self.exp.window_main.close)
+
+            previous_sigint = signal.signal(signal.SIGINT, stop_from_console)
+            try:
+                app.exec_()
+            finally:
+                signal.signal(signal.SIGINT, previous_sigint)
