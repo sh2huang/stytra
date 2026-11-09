@@ -234,6 +234,9 @@ class Experiment(QObject):
             self.display_config.get("idle_background_bright", True)
         )
         config["display"] = display_config
+        display_config["idle_background_level"] = self.display_config.get(
+            "idle_background_level", 255
+        )
 
         temp_path = Path(str(setup_path) + ".tmp")
         try:
@@ -411,6 +414,9 @@ class Experiment(QObject):
         -------
 
         """
+        if hasattr(self.protocol, "close"):
+            self.protocol.close()
+
         if self.protocol_runner is not None:
             self.protocol_runner.timer.stop()
             if (
@@ -514,6 +520,7 @@ class VisualExperiment(Experiment):
                 idle_background_bright=self.display_config.get(
                     "idle_background_bright", True
                 ),
+                idle_background_level=self.display_config.get("idle_background_level", 255),
             )
 
         self.display_framerate_acc = None

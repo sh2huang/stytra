@@ -280,16 +280,37 @@ class ProjectorAndCalibrationWidget(QWidget):
         self.button_show_fov = QPushButton("Show FOV")
         self.button_show_fov.setCheckable(True)
         self.button_show_fov.toggled.connect(self.toggle_fov_calibration)
+        self.button_show_looms = QPushButton("Show loom positions")
+        self.button_show_looms.setCheckable(True)
+        self.button_show_looms.setToolTip(
+            "Show all four loom positions at maximum size for setup alignment."
+        )
+        self.button_show_looms.toggled.connect(self.toggle_loom_alignment)
+        runner = self.experiment.protocol_runner
+        runner.sig_protocol_started.connect(self.disable_loom_alignment)
+        runner.sig_protocol_finished.connect(self.update_loom_alignment_button)
+        runner.sig_protocol_interrupted.connect(self.update_loom_alignment_button)
+        runner.sig_protocol_updated.connect(self.update_loom_alignment_button)
+        self.update_loom_alignment_button()
 
-        self.checkbox_bright_idle = QCheckBox("Bright idle BG (128)")
+        self.checkbox_bright_idle = QCheckBox("Idle BG")
         self.checkbox_bright_idle.setToolTip(
-            "Use RGB (128, 128, 128) before and after the protocol; "
+            "Use the selected brightness before and after the protocol; "
             "leave unchecked for black."
         )
         self.checkbox_bright_idle.setChecked(
             bool(self.experiment.display_config.get("idle_background_bright", True))
         )
         self.checkbox_bright_idle.toggled.connect(self.toggle_idle_background)
+        self.spin_idle_background = QSpinBox()
+        self.spin_idle_background.setRange(0, 255)
+        self.spin_idle_background.setValue(
+            self.experiment.display_config.get("idle_background_level", 255)
+        )
+        self.spin_idle_background.setKeyboardTracking(False)
+        self.spin_idle_background.valueChanged.connect(
+            lambda: self.toggle_idle_background(self.checkbox_bright_idle.isChecked())
+        )
 
         if isinstance(experiment.calibrator, CircleCalibrator):
             self.button_calibrate = QPushButton("Calibrate")
@@ -300,7 +321,9 @@ class ProjectorAndCalibrationWidget(QWidget):
         self.label_calibrate.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.layout_calibrate.addWidget(self.button_show_calib)
         self.layout_calibrate.addWidget(self.button_show_fov)
+        self.layout_calibrate.addWidget(self.button_show_looms)
         self.layout_calibrate.addWidget(self.checkbox_bright_idle)
+        self.layout_calibrate.addWidget(self.spin_idle_background)
         self.layout_calibrate.addWidget(self.label_calibrate)
 
         self.calibrator_len_spin = ControlSpin(self.calibrator, "length_mm")
@@ -359,6 +382,7 @@ class ProjectorAndCalibrationWidget(QWidget):
 
     def toggle_calibration(self):
         """ """
+        self.button_show_looms.setChecked(False)
         if isinstance(self.calibrator, CircleCalibrator):
             frame = self._get_calibration_frame()
             if frame is None:
@@ -367,8 +391,11 @@ class ProjectorAndCalibrationWidget(QWidget):
             self.widget_proj_viewer.display_calibration_pattern(
                 self.calibrator, frame.shape, frame
             )
-        self.calibrator.toggle()
-        if self.calibrator.enabled:
+        self.set_calibration_enabled(not self.calibrator.enabled)
+
+    def set_calibration_enabled(self, enabled):
+        self.calibrator.enabled = bool(enabled)
+        if enabled:
             self.button_show_calib.setText("Hide calibration")
         else:
             self.button_show_calib.setText("Show calibration")
@@ -377,22 +404,54 @@ class ProjectorAndCalibrationWidget(QWidget):
 
     def toggle_fov_calibration(self, enabled):
         if enabled:
+            self.button_show_looms.setChecked(False)
             self.button_show_fov.setText("Hide FOV")
         else:
             self.button_show_fov.setText("Show FOV")
         self.experiment.window_display.widget_display.set_fov_calibration(enabled)
 
+    def update_loom_alignment_button(self):
+        self.button_show_looms.setChecked(False)
+        runner = self.experiment.protocol_runner
+        self.button_show_looms.setEnabled(not runner.running)
+
+    def disable_loom_alignment(self):
+        self.button_show_looms.setChecked(False)
+        self.button_show_looms.setEnabled(False)
+
+    def toggle_loom_alignment(self, enabled):
+        """Display static loom silhouettes without starting stimuli or triggers."""
+        if enabled:
+            runner = self.experiment.protocol_runner
+            if runner.running:
+                self.button_show_looms.setChecked(False)
+                return
+            self.button_show_fov.setChecked(False)
+            if self.calibrator.enabled:
+                self.set_calibration_enabled(False)
+
+        self.button_show_looms.setText(
+            "Hide loom positions" if enabled else "Show loom positions"
+        )
+        self.experiment.window_display.widget_display.set_loom_alignment(enabled)
+        main_window = getattr(self.experiment, "window_main", None)
+        preview = getattr(main_window, "stimulus_display", None)
+        if preview is not None:
+            preview.widget_display.set_loom_alignment(enabled)
+
     def toggle_idle_background(self, enabled):
         """Switch idle projector background and persist the choice."""
         enabled = bool(enabled)
+        level = self.spin_idle_background.value()
         self.experiment.display_config["idle_background_bright"] = enabled
-        self.experiment.window_display.widget_display.set_idle_background(enabled)
+        self.experiment.display_config["idle_background_level"] = level
+        self.experiment.window_display.widget_display.set_idle_background(enabled, level)
 
         # Keep the optional stimulus preview consistent with the projector.
         main_window = getattr(self.experiment, "window_main", None)
         stimulus_display = getattr(main_window, "stimulus_display", None)
         if stimulus_display is not None:
-            stimulus_display.widget_display.set_idle_background(enabled)
+            stimulus_display.widget_display.set_idle_background(enabled, level)
 
         self.experiment.save_idle_background_setup()
 

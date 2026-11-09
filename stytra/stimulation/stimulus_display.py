@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import (
 )
 
 from lightparam.param_qt import ParametrizedWidget, Param
+from stytra.calibration.loom import LoomAlignmentPattern
 
 
 class StimulusDisplayWindow(ParametrizedWidget):
@@ -49,6 +50,7 @@ class StimulusDisplayWindow(ParametrizedWidget):
         record_stim_framerate=None,
         gl=False,
         idle_background_bright=True,
+        idle_background_level=255,
         **kwargs
     ):
         """
@@ -80,7 +82,7 @@ class StimulusDisplayWindow(ParametrizedWidget):
             record_stim_framerate=record_stim_framerate,
         )
         self.widget_display.setMaximumSize(2000, 2000)
-        self.widget_display.set_idle_background(idle_background_bright)
+        self.widget_display.set_idle_background(idle_background_bright, idle_background_level)
 
         self.pos = Param((0, 0))
         self.size = Param((400, 400))
@@ -175,6 +177,7 @@ class StimDisplayWidget:
         self.img = None
         self.calibrating = False
         self.fov_calibration_enabled = False
+        self.loom_alignment_pattern = None
         self.idle_background_color = (0, 0, 0)
         self.dims = None
 
@@ -238,15 +241,28 @@ class StimDisplayWidget:
         if self.fov_calibration_enabled:
             self.paint_fov_calibration_pattern(p, h, w)
 
+        self.paint_loom_alignment(p, w, h)
+
         p.end()
+
+    def set_loom_alignment(self, enabled):
+        """Show the universal static loom alignment pattern while idle."""
+        self.loom_alignment_pattern = LoomAlignmentPattern() if enabled else None
+        self.update()
+
+    def paint_loom_alignment(self, p, w, h):
+        if self.loom_alignment_pattern is not None and not self.protocol_runner.running:
+            p.save()
+            self.loom_alignment_pattern.paint(p, w, h, self.calibrator.mm_px)
+            p.restore()
 
     def set_fov_calibration(self, enabled):
         self.fov_calibration_enabled = enabled
         self.update()
 
-    def set_idle_background(self, bright):
+    def set_idle_background(self, bright, level=255):
         """Set the background shown while no protocol is running."""
-        level = 128 if bright else 0
+        level = level if bright else 0
         self.idle_background_color = (level, level, level)
         self.update()
 
@@ -421,5 +437,7 @@ class StimDisplayWidgetConditional(StimDisplayWidget):
 
             if self.fov_calibration_enabled:
                 self.paint_fov_calibration_pattern(p, h, w)
+
+            self.paint_loom_alignment(p, w, h)
 
         p.end()
