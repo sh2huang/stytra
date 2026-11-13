@@ -270,6 +270,8 @@ class StimDisplayWidget:
         """Draw a field-of-view frame and center marker on the stimulus window."""
         cx = float(w) / 2.0
         cy = float(h) / 2.0
+        line_width = 5.0
+        inset = line_width / 2.0
 
         p.save()
         p.setRenderHint(QPainter.Antialiasing, False)
@@ -278,12 +280,12 @@ class StimDisplayWidget:
         p.drawRect(QRectF(0.0, 0.0, float(w), float(h)))
 
         p.setBrush(QBrush(QColor(0, 0, 0, 0)))
-        p.setPen(QPen(QColor(255, 255, 255), 1))
-        p.drawRect(QRectF(0.5, 0.5, float(w) - 1.0, float(h) - 1.0))
+        p.setPen(QPen(QColor(255, 255, 255), line_width))
+        p.drawRect(QRectF(inset, inset, float(w) - line_width, float(h) - line_width))
         p.drawLine(QPointF(cx, 0.0), QPointF(cx, float(h)))
         p.drawLine(QPointF(0.0, cy), QPointF(float(w), cy))
 
-        p.setPen(QPen(QColor(255, 255, 255), 1))
+        p.setPen(QPen(QColor(255, 255, 255), line_width))
         p.drawLine(QPointF(cx - 20.0, cy), QPointF(cx + 20.0, cy))
         p.drawLine(QPointF(cx, cy - 20.0), QPointF(cx, cy + 20.0))
 
