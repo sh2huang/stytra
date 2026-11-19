@@ -5,6 +5,10 @@ from PyQt5.QtCore import QPointF, QRectF, Qt
 from PyQt5.QtGui import QBrush, QColor, QPainter, QPainterPath
 
 
+E10_LOOM_END_DEG = 60.0
+E10_UPPER_ELEVATION_DEG = 34.0
+
+
 class LoomAlignmentPattern:
     """Four static 60-degree squares on the 18 mm radius cylindrical arena.
 
@@ -13,8 +17,8 @@ class LoomAlignmentPattern:
     These fixed reference dimensions do not depend on the selected protocol.
     """
 
-    angles_deg = (-105.0, -35.0, 35.0, 105.0)
-    full_angle_deg = 60.0
+    angles_deg = (-105.0, -40.0, 40.0, 105.0)
+    full_angle_deg = E10_LOOM_END_DEG
     animal_height_mm = 4.0
     arena_radius_mm = 18.0
     arena_height_mm = 18.0
@@ -50,9 +54,9 @@ class LoomAlignmentPattern:
     def paint(self, p, w, h, mm_px):
         """Draw white background and the four black wall-and-floor shadows."""
         beta = np.deg2rad(self.full_angle_deg) / 2.0
-        wall_offset = self.arena_radius_mm * np.tan(beta)
-        wall_lower = np.clip(self.animal_height_mm - wall_offset, 0, self.arena_height_mm)
-        wall_upper = np.clip(self.animal_height_mm + wall_offset, 0, self.arena_height_mm)
+        upper = np.deg2rad(E10_UPPER_ELEVATION_DEG)
+        wall_lower = np.clip(self.animal_height_mm - self.arena_radius_mm * np.tan(beta), 0, self.arena_height_mm)
+        wall_upper = np.clip(self.animal_height_mm + self.arena_radius_mm * np.tan(upper), 0, self.arena_height_mm)
         wall_inner = self.projector_radius_mm - wall_upper
         wall_outer = self.projector_radius_mm - wall_lower
         floor_inner = np.clip(
