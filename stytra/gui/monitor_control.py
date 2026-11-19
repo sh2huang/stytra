@@ -5,16 +5,15 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QPushButton,
     QSpinBox,
+    QDoubleSpinBox,
     QCheckBox,
 )
 
 import numpy as np
 import pyqtgraph as pg
 
-from stytra.calibration import CircleCalibrator, CrossCalibrator, CalibrationException
-from stytra.stimulation.stimulus_display import StimDisplayWidget
+from stytra.calibration import CircleCalibrator, CalibrationException
 from PyQt5.QtWidgets import QVBoxLayout, QMessageBox
-from lightparam.gui import ControlSpin
 
 import cv2
 import logging
@@ -241,7 +240,6 @@ class ProjectorAndCalibrationWidget(QWidget):
         self.widget_proj_viewer = ProjectorViewer(display=experiment.window_display)
         self.container_layout.addWidget(self.widget_proj_viewer)
 
-        self.widget_proj_viewer.sig_dim_changed.connect(self.update_size)
 
         self.updating_roi_controls = False
         self.layout_roi_controls = QHBoxLayout()
@@ -274,12 +272,46 @@ class ProjectorAndCalibrationWidget(QWidget):
             experiment.window_display.pos, experiment.window_display.size
         )
 
-        self.layout_calibrate = QHBoxLayout()
-        self.button_show_calib = QPushButton("Show calibration")
-        self.button_show_calib.clicked.connect(self.toggle_calibration)
-        self.button_show_fov = QPushButton("Show FOV")
-        self.button_show_fov.setCheckable(True)
-        self.button_show_fov.toggled.connect(self.toggle_fov_calibration)
+        self.fov_buttons = {}
+        self.fov_controls = QWidget()
+        fov_layout = QVBoxLayout(self.fov_controls)
+        fov_layout.setContentsMargins(12, 0, 12, 0)
+        actions = QHBoxLayout()
+        measures = QHBoxLayout()
+        fov_layout.addLayout(actions)
+        fov_layout.addLayout(measures)
+        self.container_layout.addWidget(self.fov_controls)
+        self.measurements = []
+        for label, minimum in (("Top", 0), ("Bottom", 0), ("Height", 0), ("Top shift", -9999)):
+            spin = QDoubleSpinBox()
+            spin.setRange(minimum, 9999)
+            spin.setSuffix(" mm")
+            measures.addWidget(QLabel(label))
+            measures.addWidget(spin)
+            self.measurements.append(spin)
+        self.measurements[-1].setToolTip(
+            "Top midpoint relative to bottom midpoint; right is positive."
+        )
+        measures.addStretch()
+        for mode, label in (("original", "Show Original FOV"), ("corrected", "Show Corrected FOV")):
+            button = QPushButton(label)
+            button.setCheckable(True)
+            self.fov_buttons[mode] = button
+            button.toggled.connect(lambda checked, m=mode: self.toggle_fov(m, checked))
+            actions.addWidget(button)
+            if mode == "original":
+                self.calibrate_fov_button = QPushButton("Calibrate")
+                self.calibrate_fov_button.clicked.connect(self.apply_fov)
+                actions.addWidget(self.calibrate_fov_button)
+        self.fov_status = QLabel()
+        fov_layout.addWidget(self.fov_status)
+        actions.addStretch()
+        saved = experiment.display_config.get("fov_calibration")
+        if saved:
+            for spin, value in zip(self.measurements, saved["measurements"]):
+                spin.setValue(value)
+        self.refresh_fov_status()
+        self.widget_proj_viewer.sig_roi_changed.connect(self.update_projection)
         self.button_show_looms = QPushButton("Show loom positions")
         self.button_show_looms.setCheckable(True)
         self.button_show_looms.setToolTip(
@@ -287,11 +319,9 @@ class ProjectorAndCalibrationWidget(QWidget):
         )
         self.button_show_looms.toggled.connect(self.toggle_loom_alignment)
         runner = self.experiment.protocol_runner
-        runner.sig_protocol_started.connect(self.disable_loom_alignment)
-        runner.sig_protocol_finished.connect(self.update_loom_alignment_button)
-        runner.sig_protocol_interrupted.connect(self.update_loom_alignment_button)
-        runner.sig_protocol_updated.connect(self.update_loom_alignment_button)
-        self.update_loom_alignment_button()
+        runner.sig_protocol_started.connect(lambda: self.enable_setup(False))
+        runner.sig_protocol_finished.connect(lambda: self.enable_setup(True))
+        runner.sig_protocol_interrupted.connect(lambda: self.enable_setup(True))
 
         self.checkbox_bright_idle = QCheckBox("Idle BG")
         self.checkbox_bright_idle.setToolTip(
@@ -313,25 +343,20 @@ class ProjectorAndCalibrationWidget(QWidget):
         )
 
         if isinstance(experiment.calibrator, CircleCalibrator):
-            self.button_calibrate = QPushButton("Calibrate")
+            self.layout_calibrate = QHBoxLayout()
+            self.button_show_calib = QPushButton("Show camera markers")
+            self.button_show_calib.clicked.connect(self.toggle_calibration)
+            self.layout_calibrate.addWidget(self.button_show_calib)
+            self.button_calibrate = QPushButton("Calibrate camera")
             self.button_calibrate.clicked.connect(self.calibrate)
             self.layout_calibrate.addWidget(self.button_calibrate)
+            self.layout_calibrate.addStretch()
+            self.layout_calibrate.setContentsMargins(12, 0, 12, 12)
+            self.container_layout.addLayout(self.layout_calibrate)
 
-        self.label_calibrate = QLabel(self.calibrator.length_to_measure)
-        self.label_calibrate.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.layout_calibrate.addWidget(self.button_show_calib)
-        self.layout_calibrate.addWidget(self.button_show_fov)
-        self.layout_calibrate.addWidget(self.button_show_looms)
-        self.layout_calibrate.addWidget(self.checkbox_bright_idle)
-        self.layout_calibrate.addWidget(self.spin_idle_background)
-        self.layout_calibrate.addWidget(self.label_calibrate)
-
-        self.calibrator_len_spin = ControlSpin(self.calibrator, "length_mm")
-
-        self.layout_calibrate.addWidget(self.calibrator_len_spin)
-
-        self.layout_calibrate.setContentsMargins(12, 0, 12, 12)
-        self.container_layout.addLayout(self.layout_calibrate)
+        actions.addWidget(self.button_show_looms)
+        actions.addWidget(self.checkbox_bright_idle)
+        actions.addWidget(self.spin_idle_background)
         self.setLayout(self.container_layout)
 
     def make_roi_spin(self, minimum, maximum):
@@ -368,9 +393,50 @@ class ProjectorAndCalibrationWidget(QWidget):
             (x_offset, y_offset), (x_size, y_size)
         )
 
-    def update_size(self, size):
-        self.calibrator.set_pixel_scale(size[0], size[1])
-        self.calibrator_len_spin.update_display()
+    def update_projection(self, pos, size):
+        try:
+            self.experiment.update_fov()
+        except ValueError as exc:
+            calibration = self.experiment.display_config["fov_calibration"]
+            self.widget_proj_viewer.set_roi_values(calibration["pos"], calibration["size"])
+            self.fov_status.setText(str(exc))
+            return
+        self.refresh_fov_status()
+        self.experiment.window_display.widget_display.update()
+
+    def refresh_fov_status(self):
+        fov = self.calibrator.fov
+        self.fov_buttons["corrected"].setEnabled(fov is not None)
+        self.fov_status.setVisible(fov is not None)
+        if fov:
+            w, h = fov.size
+            self.fov_status.setText(
+                "{:.2f} × {:.2f} mm  ({:.5f} mm/px)".format(
+                    w * fov.mm_px, h * fov.mm_px, fov.mm_px
+                )
+            )
+
+    def apply_fov(self):
+        self.fov_status.show()
+        values = [spin.value() for spin in self.measurements]
+        if min(values[:3]) <= 0:
+            self.fov_status.setText("Enter positive top width, bottom width and height.")
+            return
+        display = self.experiment.window_display
+        calibration = dict(measurements=values, pos=list(display.pos), size=list(display.size))
+        try:
+            self.experiment.update_fov(calibration)
+        except ValueError as exc:
+            self.fov_status.setText(str(exc))
+            return
+        self.refresh_fov_status()
+        display.widget_display.update()
+        if not self.experiment.save_display_setup():
+            self.fov_status.setText("Calibration active. Could not save device settings.")
+
+    def clear_fov(self):
+        for button in self.fov_buttons.values():
+            button.setChecked(False)
 
     def _get_calibration_frame(self):
         try:
@@ -383,6 +449,7 @@ class ProjectorAndCalibrationWidget(QWidget):
     def toggle_calibration(self):
         """ """
         self.button_show_looms.setChecked(False)
+        self.clear_fov()
         if isinstance(self.calibrator, CircleCalibrator):
             frame = self._get_calibration_frame()
             if frame is None:
@@ -396,28 +463,38 @@ class ProjectorAndCalibrationWidget(QWidget):
     def set_calibration_enabled(self, enabled):
         self.calibrator.enabled = bool(enabled)
         if enabled:
-            self.button_show_calib.setText("Hide calibration")
+            self.button_show_calib.setText("Hide camera markers")
         else:
-            self.button_show_calib.setText("Show calibration")
+            self.button_show_calib.setText("Show camera markers")
         self.sig_calibrating.emit()
         self.experiment.window_display.widget_display.update()
 
-    def toggle_fov_calibration(self, enabled):
+    def toggle_fov(self, mode, enabled):
         if enabled:
             self.button_show_looms.setChecked(False)
-            self.button_show_fov.setText("Hide FOV")
-        else:
-            self.button_show_fov.setText("Show FOV")
-        self.experiment.window_display.widget_display.set_fov_calibration(enabled)
+            if self.calibrator.enabled:
+                self.set_calibration_enabled(False)
+            for other, button in self.fov_buttons.items():
+                if other != mode:
+                    button.setChecked(False)
+        self.experiment.window_display.widget_display.set_fov_calibration(mode if enabled else None)
+        preview = getattr(self.experiment.window_main, "stimulus_display", None)
+        if preview is not None:
+            preview.widget_display.set_fov_calibration(mode if enabled else None)
 
-    def update_loom_alignment_button(self):
+    def enable_setup(self, enabled):
         self.button_show_looms.setChecked(False)
-        runner = self.experiment.protocol_runner
-        self.button_show_looms.setEnabled(not runner.running)
-
-    def disable_loom_alignment(self):
-        self.button_show_looms.setChecked(False)
-        self.button_show_looms.setEnabled(False)
+        self.clear_fov()
+        if self.calibrator.enabled:
+            self.set_calibration_enabled(False)
+        for widget in (self.button_show_looms, self.calibrate_fov_button,
+                       self.fov_buttons["original"], *self.measurements,
+                       self.widget_proj_viewer, *self.roi_controls):
+            widget.setEnabled(enabled)
+        self.fov_buttons["corrected"].setEnabled(enabled and self.calibrator.fov is not None)
+        if isinstance(self.calibrator, CircleCalibrator):
+            self.button_show_calib.setEnabled(enabled)
+            self.button_calibrate.setEnabled(enabled)
 
     def toggle_loom_alignment(self, enabled):
         """Display static loom silhouettes without starting stimuli or triggers."""
@@ -426,7 +503,7 @@ class ProjectorAndCalibrationWidget(QWidget):
             if runner.running:
                 self.button_show_looms.setChecked(False)
                 return
-            self.button_show_fov.setChecked(False)
+            self.clear_fov()
             if self.calibrator.enabled:
                 self.set_calibration_enabled(False)
 
@@ -453,7 +530,7 @@ class ProjectorAndCalibrationWidget(QWidget):
         if stimulus_display is not None:
             stimulus_display.widget_display.set_idle_background(enabled, level)
 
-        self.experiment.save_idle_background_setup()
+        self.experiment.save_display_setup()
 
     def calibrate(self):
         """ """
@@ -464,6 +541,7 @@ class ProjectorAndCalibrationWidget(QWidget):
 
         try:
             self.calibrator.find_transform_matrix(frame)
+            self.calibrator.camera_fov = self.experiment.camera_fov_key()
         except CalibrationException as calibration_exception:
             exception_message = str(calibration_exception)
 

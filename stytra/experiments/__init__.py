@@ -15,6 +15,7 @@ from pathlib import Path
 from PyQt5.QtCore import QObject, QTimer, pyqtSignal, QByteArray
 
 from stytra.calibration import CrossCalibrator
+from stytra.calibration.fov import CorrectedFOV
 from stytra.collectors import DataCollector
 from stytra.stimulation import ProtocolRunner
 from stytra.metadata import AnimalMetadata, GeneralMetadata
@@ -207,8 +208,8 @@ class Experiment(QObject):
 
         self.protocol_runner.framerate_acc.reset()
 
-    def save_idle_background_setup(self):
-        """Persist the idle-background checkbox in stytra_setup_config.json."""
+    def save_display_setup(self):
+        """Save device-wide projector settings alongside the other setup options."""
         if self.instance_number >= 0:
             filename = "stytra_setup_config_{}.json".format(self.instance_number)
         else:
@@ -237,6 +238,8 @@ class Experiment(QObject):
         display_config["idle_background_level"] = self.display_config.get(
             "idle_background_level", 255
         )
+        if "fov_calibration" in self.display_config:
+            display_config["fov_calibration"] = self.display_config["fov_calibration"]
 
         temp_path = Path(str(setup_path) + ".tmp")
         try:
@@ -268,7 +271,7 @@ class Experiment(QObject):
         """
         self.gui_timer.start(1000 // 60)
 
-        self.dc.restore_from_saved()
+        self.restore_parameters()
         self.set_id()
 
         if self.arduino_config is not None:
@@ -281,6 +284,9 @@ class Experiment(QObject):
 
         self.make_window()
         self.protocol_runner.update_protocol()
+
+    def restore_parameters(self):
+        self.dc.restore_from_saved()
 
     def restore_window_state(self):
         if self.gui_params.window_state:
@@ -540,11 +546,40 @@ class VisualExperiment(Experiment):
         """
         super().start_experiment()
 
-        if self.display_config.get("window_size", None) is not None:
+        if not self.calibrator.fov and self.display_config.get("window_size") is not None:
             self.window_display.size = self.display_config["window_size"]
             self.window_display.set_dims()
 
         self.show_stimulus_screen(self.display_config.get("full_screen", False))
+
+    def restore_parameters(self):
+        super().restore_parameters()
+        calibration = self.display_config.get("fov_calibration")
+        if calibration and not self.offline:
+            self.window_display.pos = tuple(calibration["pos"])
+            self.window_display.size = tuple(calibration["size"])
+            self.update_fov()
+
+    def update_fov(self, calibration=None):
+        display = self.window_display
+        if calibration is None:
+            calibration = self.display_config.get("fov_calibration")
+        if calibration:
+            fov = CorrectedFOV(calibration, display.pos, display.size)
+            self.display_config["fov_calibration"] = calibration
+            self.calibrator.fov = fov
+            self.calibrator.mm_px = fov.mm_px
+            if self.calibrator.camera_fov != self.camera_fov_key():
+                self.calibrator.cam_to_proj = None
+                self.calibrator.proj_to_cam = None
+            self.dc.add_static_data(calibration, "stimulus/fov_calibration")
+        else:
+            self.calibrator.set_pixel_scale(*display.size)
+
+    def camera_fov_key(self):
+        return json.dumps([self.display_config.get("fov_calibration"),
+                           list(self.window_display.pos), list(self.window_display.size)],
+                          sort_keys=True)
 
     def restore_window_state(self):
         if self.gui_params.window_state:

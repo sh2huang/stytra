@@ -3,7 +3,7 @@ from datetime import datetime
 import numpy as np
 import qimage2ndarray
 from PyQt5.QtCore import QPointF, QRectF, Qt, QSize
-from PyQt5.QtGui import QPainter, QBrush, QColor, QPen, QTransform
+from PyQt5.QtGui import QPainter, QBrush, QColor, QPen, QImage
 from PyQt5.QtWidgets import (
     QOpenGLWidget,
     QWidget,
@@ -176,7 +176,8 @@ class StimDisplayWidget:
 
         self.img = None
         self.calibrating = False
-        self.fov_calibration_enabled = False
+        self.fov_mode = None
+        self.frame_buffer = QImage()
         self.loom_alignment_pattern = None
         self.idle_background_color = (0, 0, 0)
         self.dims = None
@@ -203,24 +204,33 @@ class StimDisplayWidget:
         self.movie_timestamps = []
 
     def paintEvent(self, QPaintEvent):
-        """Generate the stimulus that will be displayed. A QPainter object is
-        defined, which is then passed to the current stimulus paint function
-        for drawing the stimulus.
-
-        Parameters
-        ----------
-        QPaintEvent :
-
-
-        Returns
-        -------
-
-        """
         p = QPainter(self)
-        p.setBrush(QBrush(QColor(0, 0, 0)))
-        w = self.width()
-        h = self.height()
+        w, h = self.width(), self.height()
+        fov = self.calibrator.fov if self.calibrator is not None else None
+        if self.fov_mode == "original":
+            self.paint_fov_calibration_pattern(p, h, w)
+        elif fov is None:
+            self.paint_scene(p, w, h)
+        else:
+            # Project the completed frame: individual stimuli may reset their painter.
+            cw, ch = fov.size
+            if self.frame_buffer.size() != QSize(cw, ch):
+                self.frame_buffer = QImage(cw, ch, QImage.Format_RGB32)
+            self.frame_buffer.fill(Qt.black)
+            scene = QPainter(self.frame_buffer)
+            self.paint_scene(scene, cw, ch)
+            scene.end()
+            p.fillRect(self.rect(), Qt.black)
+            scale = min(w / cw, h / ch)
+            p.translate((w - cw * scale) / 2, (h - ch * scale) / 2)
+            p.scale(scale, scale)
+            p.setWorldTransform(fov.transform, True)
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            p.drawImage(QPointF(0, 0), self.frame_buffer)
+        p.end()
 
+    def paint_scene(self, p, w, h):
+        p.setBrush(QBrush(QColor(0, 0, 0)))
         if self.protocol_runner is not None:
             if self.protocol_runner.running:
                 try:
@@ -238,12 +248,10 @@ class StimDisplayWidget:
             if self.calibrator.enabled:
                 self.calibrator.paint_calibration_pattern(p, h, w)
 
-        if self.fov_calibration_enabled:
+        if self.fov_mode == "corrected":
             self.paint_fov_calibration_pattern(p, h, w)
 
         self.paint_loom_alignment(p, w, h)
-
-        p.end()
 
     def set_loom_alignment(self, enabled):
         """Show the universal static loom alignment pattern while idle."""
@@ -256,8 +264,8 @@ class StimDisplayWidget:
             self.loom_alignment_pattern.paint(p, w, h, self.calibrator.mm_px)
             p.restore()
 
-    def set_fov_calibration(self, enabled):
-        self.fov_calibration_enabled = enabled
+    def set_fov_calibration(self, mode):
+        self.fov_mode = mode
         self.update()
 
     def set_idle_background(self, bright, level=255):
@@ -293,10 +301,13 @@ class StimDisplayWidget:
             "size: {} x {} px".format(w, h),
             "center: ({:.1f}, {:.1f}) px".format(cx, cy),
         ]
+        if self.fov_mode == "corrected":
+            mm_px = self.calibrator.mm_px
+            info_lines.append("{:.2f} x {:.2f} mm".format(w * mm_px, h * mm_px))
         font_metrics = p.fontMetrics()
         text_width = max(font_metrics.width(line) for line in info_lines)
         line_height = font_metrics.height()
-        box_rect = QRectF(8.0, 8.0, float(text_width + 16), float(line_height * 2 + 12))
+        box_rect = QRectF(8.0, 8.0, float(text_width + 16), float(line_height * len(info_lines) + 12))
 
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor(0, 0, 0, 180)))
@@ -410,36 +421,6 @@ class StimDisplayWidgetConditional(StimDisplayWidget):
 
                 self.last_time = current_time
 
-    def paintEvent(self, QPaintEvent):
-
-        p = QPainter(self)
-        p.setBrush(QBrush(QColor(0, 0, 0)))
-
-        w = self.width()
-        h = self.height()
-
+    def paintEvent(self, event):
         if self.display_state:
-
-            if self.protocol_runner is not None:
-                if self.protocol_runner.running:
-                    try:
-                        self.protocol_runner.current_stimulus.paint(p, w, h)
-                    except AttributeError:
-                        pass
-                else:
-                    p.setBrush(QBrush(QColor(*self.idle_background_color)))
-                    p.drawRect(QRectF(-1.0, -1.0, float(w) + 2.0, float(h) + 2.0))
-                    p.setRenderHint(QPainter.SmoothPixmapTransform, 1)
-                    if self.img is not None:
-                        p.drawImage(QPointF(0.0, 0.0), self.img)
-
-            if self.calibrator is not None:
-                if self.calibrator.enabled:
-                    self.calibrator.paint_calibration_pattern(p, h, w)
-
-            if self.fov_calibration_enabled:
-                self.paint_fov_calibration_pattern(p, h, w)
-
-            self.paint_loom_alignment(p, w, h)
-
-        p.end()
+            super().paintEvent(event)

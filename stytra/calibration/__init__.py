@@ -20,12 +20,14 @@ class Calibrator(ParametrizedQt):
     def __init__(self, mm_px=0.2):
         super().__init__(name="stimulus/calibration_params")
         self.enabled = False
+        self.fov = None
 
         self.mm_px = Param(mm_px)
         self.length_mm = Param(30.0, limits=(1, 800), unit="mm")
         self.length_px = Param(None)
         self.cam_to_proj = Param(None)
         self.proj_to_cam = Param(None)
+        self.camera_fov = Param(None)
 
         self.length_to_measure = "do not use the base class as a calibrator"
 
@@ -37,6 +39,8 @@ class Calibrator(ParametrizedQt):
 
     def set_physical_scale(self, change):
         """Calculate mm/px from calibrator length"""
+        if self.fov is not None:
+            return
         if change.get("length_mm", None) is not None:
             if self.length_px is not None:
                 self.block_signal = True
